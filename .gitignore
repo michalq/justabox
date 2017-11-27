@@ -1,0 +1,5 @@
+main.hex
+main.o
+.idea
+.dep
+cmake-build-debug
