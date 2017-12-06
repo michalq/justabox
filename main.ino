@@ -10,8 +10,6 @@
 DHT dht(DHTPIN, DHTTYPE);
 LiquidCrystal_I2C lcd(0x27, 2, 1, 0, 4, 5, 6, 7, 3, POSITIVE);
 
-// Heating program
-static uint8_t heatingProgram = 1;
 // Sensors
 #define SENSOR_READ_INTERVAL 3000 // couldn't be less than 2s
 static uint8_t temperature;
@@ -36,7 +34,7 @@ static char txt[150];
 static uint32_t index;
 #define FUNC_LOAD_PROGRAM 1
 
-#define BT_COMMAND_LISTEN 255
+#define BT_COMMAND_LISTEN    255
 
 #define BT_STATE_MAIN         0
 #define BT_STATE_HEAT_PROGRAM 1
@@ -53,6 +51,134 @@ static uint32_t index;
 static uint32_t menuBlinkTimStatus;
 static uint32_t menuBlinkTimDiff;
 static uint32_t settingProgramCounter = 0;
+
+// Heating program
+static uint8_t heatingProgram = 1;
+static uint8_t programReadingState = 0;
+static struct HeatingProgram heatingPrograms[5];
+
+#define HEATING_PROGRAM_STATE_READ_ID 0
+#define HEATING_PROGRAM_STATE_READ_NAME 1
+#define HEATING_PROGRAM_STATE_READ_PROGRAM 2
+#define HEATING_PROGRAM_STATE_READ_END 3
+
+typedef struct HeatingProgram {
+    /// Assumptions: per day max 5 settings,
+    /// max size of one program will be 5 (max settings) * 7 (days) * 4 (bytes per line) = 140 (bytes)
+    uint8_t payload[140];
+    /// Lengths indicates bytes amount
+    uint8_t length = 0;
+    /// Max 8 chars per name
+    /// allowed chars a-zA-Z and space, in ascii 69-90, 97-122, 32
+    char name[8];
+    uint8_t nameLength = 0;
+    uint8_t id = 0;
+} HeatingProgram;
+
+uint8_t HeatingProgram_ReadProgram(HeatingProgram* program, uint8_t payload)
+{
+    switch (programReadingState) {
+        case HEATING_PROGRAM_STATE_READ_NAME:
+            // Zero means stop recording.
+            if (0 == payload) {
+                programReadingState = HEATING_PROGRAM_STATE_READ_PROGRAM;
+                return 1;
+            }
+
+            if (!HeatingProgramValidator_Name(payload, program->length)) {
+                return 0;
+            }
+
+            program->name[program->length++] = payload;
+            break;
+        case HEATING_PROGRAM_STATE_READ_PROGRAM:
+            // Zero means stop recording.
+            if (0 == payload) {
+                programReadingState = HEATING_PROGRAM_STATE_READ_END;
+                return 1;
+            }
+
+            switch (program->length % 3) {
+                case 0:
+                    /// Reading day
+                    if (!HeatingProgramValidator_Day(payload)) {
+                        // @TODO send info about error.
+                        return 0;
+                    }
+
+                    program->payload[program->length++] = payload;
+                    break;
+                case 1:
+                    /// Reading hour from
+                case 2:
+                    /// Reading hour to
+                    if (!HeatingProgramValidator_Hour(payload)) {
+                        // @TODO send info about error.
+                        return 0;
+                    }
+
+                    program->payload[program->length++] = payload;
+                    break;
+                case 3:
+                    /// Reading temperature
+                    if (!HeatingProgramValidator_Temperature(payload)) {
+                        // @TODO send info about error.
+                        return 0;
+                    }
+
+                    program->payload[program->length++] = payload;
+                    break;
+            }
+
+            break;
+    }
+
+    return 1;
+}
+uint8_t HeatingProgramValidator_Name(uint8_t tmpChar, uint8_t length)
+{
+    if (length > 8) {
+        return 0;
+    }
+
+    if ((tmpChar >= 69 && tmpChar <= 90) || (tmpChar >= 97 && tmpChar <= 122) || 32 == tmpChar) {
+        return 1;
+    }
+
+    return 0;
+}
+uint8_t HeatingProgramValidator_Day(uint8_t day)
+{
+    if (day >= 0 && day <= 6) {
+        return 1;
+    }
+
+    return 0;
+}
+uint8_t HeatingProgramValidator_Hour(uint8_t hour)
+{
+    if (hour >= 0 && hour <= 23) {
+        return 1;
+    }
+
+    return 0;
+}
+uint8_t HeatingProgramValidator_Temperature(uint8_t temperature)
+{
+    if (temperature >= 0 && temperature <= 100) {
+        return 1;
+    }
+
+    return 0;
+}
+uint8_t HeatingProgramValidator_Id(uint8_t id)
+{
+    if (id >= 0 && id <= 4) {
+        return 1;
+    }
+
+    return 0;
+}
 
 void setup ()
 {
@@ -228,16 +354,24 @@ void bluetoothRead()
                 return;
             }
 
-            if (1 == index) {
-                txt[index++] = zn;
-                txt[index] = '\0';
+            if (HEATING_PROGRAM_STATE_READ_ID == programReadingState) {
+                if (!HeatingProgramValidator_Id(zn)) {
+                    // @TODO send serial with error.
+                    btState = BT_STATE_MAIN;
+                }
+
+                currentProgrammedProgram = zn;
+                heatingPrograms[currentProgrammedProgram]->id = currentProgrammedProgram;
+                programReadingState = HEATING_PROGRAM_STATE_READ_NAME;
+            } else if (HEATING_PROGRAM_STATE_READ_END == programReadingState) {
+                // @TODO send info about success.
+                btState = BT_STATE_MAIN;
+                programReadingState = HEATING_PROGRAM_STATE_READ_ID;
+            } else {
+                HeatingProgram_ReadProgram(heatingPrograms[currentProgrammedProgram], zn);
             }
 
             break;
-    }
-
-    if (strcmp(txt, "t1") == 0) {
-        //
     }
 }
 
