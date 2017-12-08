@@ -42,11 +42,12 @@ static uint32_t index;
 #define MENU_BLINK_TIM 500
 #define MENU_CHANGE_PROGRAM_TIM_THRESHOLD 2000
 
-#define MENU_STATE_MAIN              0
-#define MENU_STATE_LIMITS            1
-#define MENU_STATE_PROGRAM           2
-#define MENU_STATE_SET_PROGRAM_ENTER 3
-#define MENU_STATE_SET_PROGRAM       4
+#define MENU_STATE_MAIN                 0
+#define MENU_STATE_LIMITS               1
+#define MENU_STATE_PROGRAM              2
+#define MENU_STATE_SET_PROGRAM_ENTER    3
+#define MENU_STATE_SET_PROGRAM          4
+#define MENU_STATE_BLUETOOTH_CONNECTION 5
 
 static uint32_t menuBlinkTimStatus;
 static uint32_t menuBlinkTimDiff;
@@ -54,15 +55,57 @@ static uint32_t settingProgramCounter = 0;
 
 // Heating program
 static uint8_t heatingProgram = 1;
-static uint8_t programReadingState = 0;
-static struct HeatingProgram heatingPrograms[5];
 
-#define HEATING_PROGRAM_STATE_READ_ID 0
-#define HEATING_PROGRAM_STATE_READ_NAME 1
-#define HEATING_PROGRAM_STATE_READ_PROGRAM 2
-#define HEATING_PROGRAM_STATE_READ_END 3
+/// Validates input.
+class ProgramValidator {
+public:
+    static uint8_t Name(uint8_t tmpChar, uint8_t length)
+    {
+        if (length > 8) {
+            return 0;
+        }
 
-typedef struct HeatingProgram {
+        if ((tmpChar >= 69 && tmpChar <= 90) || (tmpChar >= 97 && tmpChar <= 122) || 32 == tmpChar) {
+            return 1;
+        }
+
+        return 0;
+    }
+    static uint8_t Day(uint8_t day)
+    {
+        if (day >= 0 && day <= 6) {
+            return 1;
+        }
+
+        return 0;
+    }
+    static uint8_t Hour(uint8_t hour)
+    {
+        if (hour >= 0 && hour <= 23) {
+            return 1;
+        }
+
+        return 0;
+    }
+    static uint8_t Temperature(uint8_t temperature)
+    {
+        if (temperature >= 0 && temperature <= 100) {
+            return 1;
+        }
+
+        return 0;
+    }
+    static uint8_t Id(uint8_t id)
+    {
+        if (id >= 0 && id <= 4) {
+            return 1;
+        }
+
+        return 0;
+    }
+};
+/// Heating program entity.
+typedef struct Program {
     /// Assumptions: per day max 5 settings,
     /// max size of one program will be 5 (max settings) * 7 (days) * 4 (bytes per line) = 140 (bytes)
     uint8_t payload[140];
@@ -73,112 +116,93 @@ typedef struct HeatingProgram {
     char name[8];
     uint8_t nameLength = 0;
     uint8_t id = 0;
-} HeatingProgram;
+} Program;
 
-uint8_t HeatingProgram_ReadProgram(HeatingProgram* program, uint8_t payload)
-{
-    switch (programReadingState) {
-        case HEATING_PROGRAM_STATE_READ_NAME:
-            // Zero means stop recording.
-            if (0 == payload) {
-                programReadingState = HEATING_PROGRAM_STATE_READ_PROGRAM;
-                return 1;
-            }
+/// Loaded programs.
+static Program* heatingPrograms[5];
 
-            if (!HeatingProgramValidator_Name(payload, program->length)) {
-                return 0;
-            }
-
-            program->name[program->length++] = payload;
-            break;
-        case HEATING_PROGRAM_STATE_READ_PROGRAM:
-            // Zero means stop recording.
-            if (0 == payload) {
-                programReadingState = HEATING_PROGRAM_STATE_READ_END;
-                return 1;
-            }
-
-            switch (program->length % 3) {
-                case 0:
-                    /// Reading day
-                    if (!HeatingProgramValidator_Day(payload)) {
-                        // @TODO send info about error.
-                        return 0;
-                    }
-
-                    program->payload[program->length++] = payload;
-                    break;
-                case 1:
-                    /// Reading hour from
-                case 2:
-                    /// Reading hour to
-                    if (!HeatingProgramValidator_Hour(payload)) {
-                        // @TODO send info about error.
-                        return 0;
-                    }
-
-                    program->payload[program->length++] = payload;
-                    break;
-                case 3:
-                    /// Reading temperature
-                    if (!HeatingProgramValidator_Temperature(payload)) {
-                        // @TODO send info about error.
-                        return 0;
-                    }
-
-                    program->payload[program->length++] = payload;
-                    break;
-            }
-
-            break;
+/// Manages programming heating programs.
+class ServiceProgram {
+public:
+    /// Currently programmed program.
+    uint8_t currProgram;
+    /// State of writer.
+    uint8_t state;
+    /// Constructor.
+    ServiceProgram()
+    {
+        this->currProgram = 0;
+        this->state = 0;
     }
+    /// Reads another byte of data.
+    uint8_t read(Program* prog, uint8_t payload)
+    {
+        switch (this->state) {
+            case HEATING_PROGRAM_STATE_READ_NAME:
+                // Zero means stop recording.
+                if (0 == payload) {
+                    this->state = HEATING_PROGRAM_STATE_READ_PROGRAM;
+                    return 1;
+                }
 
-    return 1;
-}
-uint8_t HeatingProgramValidator_Name(uint8_t tmpChar, uint8_t length)
-{
-    if (length > 8) {
-        return 0;
-    }
+                if (!ProgramValidator::Name(payload, prog->length)) {
+                    return 0;
+                }
 
-    if ((tmpChar >= 69 && tmpChar <= 90) || (tmpChar >= 97 && tmpChar <= 122) || 32 == tmpChar) {
+                prog->name[prog->length++] = payload;
+                break;
+            case HEATING_PROGRAM_STATE_READ_PROGRAM:
+                // Zero means stop recording.
+                if (0 == payload) {
+                    this->state = HEATING_PROGRAM_STATE_READ_PROGRAM;
+                    return 1;
+                }
+
+                switch (prog->length % 3) {
+                    case 0:
+                        /// Reading day
+                        if (!ProgramValidator::Day(payload)) {
+                            Serial.write("{\"success\":false,\"message\":\"invalid day\"}");
+                            return 0;
+                        }
+
+                        prog->payload[prog->length++] = payload;
+                        break;
+                    case 1:
+                        /// Reading hour from
+                    case 2:
+                        /// Reading hour to
+                        if (!ProgramValidator::Hour(payload)) {
+                            Serial.write("{\"success\":false,\"message\":\"invalid hour\"}");
+                            return 0;
+                        }
+
+                        prog->payload[prog->length++] = payload;
+                        break;
+                    case 3:
+                        /// Reading temperature
+                        if (!ProgramValidator::Temperature(payload)) {
+                            Serial.write("{\"success\":false,\"message\":\"invalid temperature\"}");
+                            return 0;
+                        }
+
+                        prog->payload[prog->length++] = payload;
+                        break;
+                }
+
+                break;
+            case HEATING_PROGRAM_STATE_READ_CRC:
+                this->state = HEATING_PROGRAM_STATE_READ_PROGRAM;
+
+                // TODO check if crc is correct.
+                break;
+        }
+
         return 1;
     }
+};
 
-    return 0;
-}
-uint8_t HeatingProgramValidator_Day(uint8_t day)
-{
-    if (day >= 0 && day <= 6) {
-        return 1;
-    }
-
-    return 0;
-}
-uint8_t HeatingProgramValidator_Hour(uint8_t hour)
-{
-    if (hour >= 0 && hour <= 23) {
-        return 1;
-    }
-
-    return 0;
-}
-uint8_t HeatingProgramValidator_Temperature(uint8_t temperature)
-{
-    if (temperature >= 0 && temperature <= 100) {
-        return 1;
-    }
-
-    return 0;
-}
-uint8_t HeatingProgramValidator_Id(uint8_t id)
-{
-    if (id >= 0 && id <= 4) {
-        return 1;
-    }
-
-    return 0;
-}
+ServiceProgram serviceProg;
 
 void setup ()
 {
@@ -192,7 +216,7 @@ void setup ()
     lcd.backlight();
 }
 
-void menu()
+void menuAction()
 {
     if (btn1 || btn2) {
         lcdLightTim = millis();
@@ -321,17 +345,16 @@ void menu()
             }
 
             break;
-        case MENU_STATE_BLUETOOTH_CONNECTION:
-            lcd.setCursor(0, 0);
-            lcd.print("Bluetooth       ");
-            lcd.setCursor(0, 1);
-            lcd.print("ON              ");
-            break;
     }
 }
 
+#define HEATING_PROGRAM_STATE_READ_ID      0
+#define HEATING_PROGRAM_STATE_READ_NAME    1
+#define HEATING_PROGRAM_STATE_READ_PROGRAM 2
+#define HEATING_PROGRAM_STATE_READ_CRC     3
+#define HEATING_PROGRAM_STATE_READ_END     4
 static uint8_t btState = 0;
-void bluetoothRead()
+void bluetoothReadAction()
 {
     if (!Serial.available()) {
         return;
@@ -354,28 +377,28 @@ void bluetoothRead()
                 return;
             }
 
-            if (HEATING_PROGRAM_STATE_READ_ID == programReadingState) {
-                if (!HeatingProgramValidator_Id(zn)) {
-                    // @TODO send serial with error.
+            if (HEATING_PROGRAM_STATE_READ_ID == serviceProg.state) {
+                if (!ProgramValidator::Id(zn)) {
+                    Serial.write("{\"success\":false,\"message\":\"Invalid id.\"}");
                     btState = BT_STATE_MAIN;
                 }
 
-                currentProgrammedProgram = zn;
-                heatingPrograms[currentProgrammedProgram]->id = currentProgrammedProgram;
-                programReadingState = HEATING_PROGRAM_STATE_READ_NAME;
-            } else if (HEATING_PROGRAM_STATE_READ_END == programReadingState) {
-                // @TODO send info about success.
+                serviceProg.currProgram = zn;
+                heatingPrograms[serviceProg.currProgram]->id = serviceProg.currProgram;
+                serviceProg.state = HEATING_PROGRAM_STATE_READ_NAME;
+            } else if (HEATING_PROGRAM_STATE_READ_END == serviceProg.state) {
+                Serial.write("{\"success\":true}");
                 btState = BT_STATE_MAIN;
-                programReadingState = HEATING_PROGRAM_STATE_READ_ID;
+                serviceProg.state = HEATING_PROGRAM_STATE_READ_ID;
             } else {
-                HeatingProgram_ReadProgram(heatingPrograms[currentProgrammedProgram], zn);
+                serviceProg.read(heatingPrograms[serviceProg.currProgram], zn);
             }
 
             break;
     }
 }
 
-void readSensors()
+void readSensorsAction()
 {
     if ((millis() - sensorReadTim) >= SENSOR_READ_INTERVAL) {
         humidity = dht.readHumidity();
@@ -389,8 +412,9 @@ void loop()
     btn1 = digitalRead(PIN_BTN1);
     btn2 = digitalRead(PIN_BTN2);
 
-    menu();
-    readSensors();
+    menuAction();
+    readSensorsAction();
+    bluetoothReadAction();
 
     pbtn1 = btn1;
     pbtn2 = btn2;
