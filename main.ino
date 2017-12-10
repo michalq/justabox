@@ -64,7 +64,7 @@ public:
             return 0;
         }
 
-        if ((tmpChar >= 69 && tmpChar <= 90) || (tmpChar >= 97 && tmpChar <= 122) || 32 == tmpChar) {
+        if ((tmpChar >= 65 && tmpChar <= 90) || (tmpChar >= 97 && tmpChar <= 122) || 32 == tmpChar) {
             return 1;
         }
 
@@ -133,12 +133,12 @@ typedef struct Program {
 #define ERR_INVALID_CRC     7
 
 /// Loaded programs.
-static Program* heatingPrograms[5];
+static Program* heatingPrograms[4];
 
 /// Manages programming heating programs.
 class ServiceProgram {
     uint8_t error;
-    Program* programsContainer[];
+    Program** programsContainer;
 public:
     /// Currently programmed program.
     Program* program;
@@ -150,9 +150,14 @@ public:
         this->reset();
     }
 
-    void setProgramsContainer(Program* progContainer[])
+    void setProgramsContainer(Program* progContainer[4])
     {
         this->programsContainer = progContainer;
+    }
+
+    uint8_t calculateCrc()
+    {
+        return 1;
     }
 
     /// Resets to initial state.
@@ -179,7 +184,7 @@ public:
     /// Reads another byte of data.
     uint8_t read(uint8_t payload)
     {
-        if (!this->program && this->state != HEATING_PROGRAM_STATE_READ_ID) {
+        if (NULL == this->program && this->state != HEATING_PROGRAM_STATE_READ_ID) {
             this->error = ERR_INVALID_PROGRAM;
             return 0;
         }
@@ -192,6 +197,7 @@ public:
                 }
 
                 this->state = HEATING_PROGRAM_STATE_READ_NAME;
+                this->programsContainer[zn] = new Program;
                 this->program = this->programsContainer[zn];
                 this->program->id = zn;
                 break;
@@ -433,18 +439,37 @@ void bluetoothReadAction()
                 return;
             }
 
-            if (HEATING_PROGRAM_STATE_READ_END == serviceProg.state) {
+            if (serviceProg.isSuccess()) {
                 Serial.write("success\n");
                 btState = BT_STATE_MAIN;
                 serviceProg.state = HEATING_PROGRAM_STATE_READ_ID;
             } else if (serviceProg.read(zn)) {
-                Serial.write("ok\n");
+                Serial.write("ok:char:");
+                Serial.write(zn + 48);
+                Serial.write(":");
+                Serial.write(zn);
+                Serial.write(":state:");
+                Serial.write(serviceProg.state + 48);
+                Serial.write("\n");
             } else {
+                Serial.write("err:");
+                Serial.write(serviceProg.getError() + 48);
+                Serial.write("\n");
+                serviceProg.reset();
                 btState = BT_STATE_MAIN;
             }
 
             break;
     }
+
+    lcd.setCursor(0, 0);
+    lcd.print("BT state|");
+    lcd.print(serviceProg.state);
+    lcd.print("|");
+    lcd.print(btState);
+    lcd.print("] ");
+    lcd.print(zn);
+    lcd.backlight();
 }
 
 void readSensorsAction()
