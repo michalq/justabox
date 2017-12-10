@@ -191,15 +191,18 @@ public:
 
         switch (this->state) {
             case HEATING_PROGRAM_STATE_READ_ID:
-                if (!ProgramValidator::Id(zn)) {
+                if (!ProgramValidator::Id(payload)) {
+                    Serial.write("\nKurwa\n");
+                    Serial.write(payload);
+                    Serial.write("\nKurwa\n");
                     this->error = ERR_INVALID_ID;
                     return 0;
                 }
 
                 this->state = HEATING_PROGRAM_STATE_READ_NAME;
-                this->programsContainer[zn] = new Program;
-                this->program = this->programsContainer[zn];
-                this->program->id = zn;
+                this->programsContainer[payload] = new Program;
+                this->program = this->programsContainer[payload];
+                this->program->id = payload;
                 break;
             case HEATING_PROGRAM_STATE_READ_NAME:
                 if (1 == payload) {
@@ -428,13 +431,16 @@ void bluetoothReadAction()
         case BT_STATE_MAIN:
             switch (zn) {
                 case BT_STATE_HEAT_PROGRAM:
+                    Serial.write("goto:heat_program\n");
+                    serviceProg.reset();
                     btState = BT_STATE_HEAT_PROGRAM;
                 return;
             }
 
             break;
         case BT_STATE_HEAT_PROGRAM:
-            if (zn == BT_COMMAND_LISTEN) {
+            if (BT_COMMAND_LISTEN == zn) {
+                Serial.write("return\n");
                 btState = BT_STATE_MAIN;
                 return;
             }
@@ -455,21 +461,11 @@ void bluetoothReadAction()
                 Serial.write("err:");
                 Serial.write(serviceProg.getError() + 48);
                 Serial.write("\n");
-                serviceProg.reset();
                 btState = BT_STATE_MAIN;
             }
 
             break;
     }
-
-    lcd.setCursor(0, 0);
-    lcd.print("BT state|");
-    lcd.print(serviceProg.state);
-    lcd.print("|");
-    lcd.print(btState);
-    lcd.print("] ");
-    lcd.print(zn);
-    lcd.backlight();
 }
 
 void readSensorsAction()
