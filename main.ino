@@ -1,7 +1,6 @@
 #include <Wire.h>
 #include <LiquidCrystal_I2C.h>
 #include "DHT.h"
-#include "string.h"
 #include "stdarg.h"
 
 #define DHTPIN 9
@@ -118,83 +117,143 @@ typedef struct Program {
     uint8_t id = 0;
 } Program;
 
+/// States of loading heating program.
+#define HEATING_PROGRAM_STATE_READ_ID      0
+#define HEATING_PROGRAM_STATE_READ_NAME    1
+#define HEATING_PROGRAM_STATE_READ_PROGRAM 2
+#define HEATING_PROGRAM_STATE_READ_CRC     3
+#define HEATING_PROGRAM_STATE_READ_END     4
+/// Error codes of program reader.
+#define ERR_INVALID_PROGRAM 1
+#define ERR_INVALID_ID      2
+#define ERR_INVALID_NAME    3
+#define ERR_INVALID_DAY     4
+#define ERR_INVALID_HOUR    5
+#define ERR_INVALID_TEMP    6
+#define ERR_INVALID_CRC     7
+
 /// Loaded programs.
 static Program* heatingPrograms[5];
 
 /// Manages programming heating programs.
 class ServiceProgram {
+    uint8_t error;
+    Program* programsContainer[];
 public:
     /// Currently programmed program.
-    uint8_t currProgram;
+    Program* program;
     /// State of writer.
     uint8_t state;
     /// Constructor.
     ServiceProgram()
     {
-        this->currProgram = 0;
-        this->state = 0;
+        this->reset();
+    }
+
+    void setProgramsContainer(Program* progContainer[])
+    {
+        this->programsContainer = progContainer;
+    }
+
+    /// Resets to initial state.
+    void reset()
+    {
+        this->error = NULL;
+        this->program = NULL;
+        this->state = HEATING_PROGRAM_STATE_READ_ID;
+    }
+
+    uint8_t getError()
+    {
+        return this->error;
+    }
+
+    uint8_t isSuccess()
+    {
+        if (HEATING_PROGRAM_STATE_READ_END != this->state || NULL != this->error) {
+            return 0;
+        }
+
+        return 1;
     }
     /// Reads another byte of data.
-    uint8_t read(Program* prog, uint8_t payload)
+    uint8_t read(uint8_t payload)
     {
-        switch (this->state) {
-            case HEATING_PROGRAM_STATE_READ_NAME:
-                // Zero means stop recording.
-                if (0 == payload) {
-                    this->state = HEATING_PROGRAM_STATE_READ_PROGRAM;
-                    return 1;
-                }
+        if (!this->program && this->state != HEATING_PROGRAM_STATE_READ_ID) {
+            this->error = ERR_INVALID_PROGRAM;
+            return 0;
+        }
 
-                if (!ProgramValidator::Name(payload, prog->length)) {
+        switch (this->state) {
+            case HEATING_PROGRAM_STATE_READ_ID:
+                if (!ProgramValidator::Id(zn)) {
+                    this->error = ERR_INVALID_ID;
                     return 0;
                 }
 
-                prog->name[prog->length++] = payload;
+                this->state = HEATING_PROGRAM_STATE_READ_NAME;
+                this->program = this->programsContainer[zn];
+                this->program->id = zn;
                 break;
-            case HEATING_PROGRAM_STATE_READ_PROGRAM:
-                // Zero means stop recording.
-                if (0 == payload) {
+            case HEATING_PROGRAM_STATE_READ_NAME:
+                if (1 == payload) {
                     this->state = HEATING_PROGRAM_STATE_READ_PROGRAM;
                     return 1;
                 }
 
-                switch (prog->length % 3) {
+                if (!ProgramValidator::Name(payload, this->program->length)) {
+                    this->error = ERR_INVALID_NAME;
+                    return 0;
+                }
+
+                this->program->name[this->program->length++] = payload;
+                break;
+            case HEATING_PROGRAM_STATE_READ_PROGRAM:
+                if (1 == payload) {
+                    this->state = HEATING_PROGRAM_STATE_READ_PROGRAM;
+                    return 1;
+                }
+
+                switch (this->program->length % 3) {
                     case 0:
                         /// Reading day
                         if (!ProgramValidator::Day(payload)) {
-                            Serial.write("{\"success\":false,\"message\":\"invalid day\"}");
+                            this->error = ERR_INVALID_DAY;
                             return 0;
                         }
 
-                        prog->payload[prog->length++] = payload;
+                        this->program->payload[this->program->length++] = payload;
                         break;
                     case 1:
                         /// Reading hour from
                     case 2:
                         /// Reading hour to
                         if (!ProgramValidator::Hour(payload)) {
-                            Serial.write("{\"success\":false,\"message\":\"invalid hour\"}");
+                            this->error = ERR_INVALID_HOUR;
                             return 0;
                         }
 
-                        prog->payload[prog->length++] = payload;
+                        this->program->payload[this->program->length++] = payload;
                         break;
                     case 3:
                         /// Reading temperature
                         if (!ProgramValidator::Temperature(payload)) {
-                            Serial.write("{\"success\":false,\"message\":\"invalid temperature\"}");
+                            this->error = ERR_INVALID_TEMP;
                             return 0;
                         }
 
-                        prog->payload[prog->length++] = payload;
+                        this->program->payload[this->program->length++] = payload;
                         break;
                 }
 
                 break;
             case HEATING_PROGRAM_STATE_READ_CRC:
-                this->state = HEATING_PROGRAM_STATE_READ_PROGRAM;
-
+                this->state = HEATING_PROGRAM_STATE_READ_END;
                 // TODO check if crc is correct.
+                if (0) {
+                    this->error = ERR_INVALID_CRC;
+                    return 0;
+                }
                 break;
         }
 
@@ -214,6 +273,8 @@ void setup ()
     dht.begin();
     lcd.begin(16, 2);
     lcd.backlight();
+
+    serviceProg.setProgramsContainer(heatingPrograms);
 }
 
 void menuAction()
@@ -348,11 +409,6 @@ void menuAction()
     }
 }
 
-#define HEATING_PROGRAM_STATE_READ_ID      0
-#define HEATING_PROGRAM_STATE_READ_NAME    1
-#define HEATING_PROGRAM_STATE_READ_PROGRAM 2
-#define HEATING_PROGRAM_STATE_READ_CRC     3
-#define HEATING_PROGRAM_STATE_READ_END     4
 static uint8_t btState = 0;
 void bluetoothReadAction()
 {
@@ -377,21 +433,14 @@ void bluetoothReadAction()
                 return;
             }
 
-            if (HEATING_PROGRAM_STATE_READ_ID == serviceProg.state) {
-                if (!ProgramValidator::Id(zn)) {
-                    Serial.write("{\"success\":false,\"message\":\"Invalid id.\"}");
-                    btState = BT_STATE_MAIN;
-                }
-
-                serviceProg.currProgram = zn;
-                heatingPrograms[serviceProg.currProgram]->id = serviceProg.currProgram;
-                serviceProg.state = HEATING_PROGRAM_STATE_READ_NAME;
-            } else if (HEATING_PROGRAM_STATE_READ_END == serviceProg.state) {
-                Serial.write("{\"success\":true}");
+            if (HEATING_PROGRAM_STATE_READ_END == serviceProg.state) {
+                Serial.write("success\n");
                 btState = BT_STATE_MAIN;
                 serviceProg.state = HEATING_PROGRAM_STATE_READ_ID;
+            } else if (serviceProg.read(zn)) {
+                Serial.write("ok\n");
             } else {
-                serviceProg.read(heatingPrograms[serviceProg.currProgram], zn);
+                btState = BT_STATE_MAIN;
             }
 
             break;
