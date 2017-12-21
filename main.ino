@@ -6,6 +6,47 @@
 #define DHTPIN 9
 #define DHTTYPE DHT11
 
+typedef struct fifo_t {
+    uint8_t* buf;
+    uint8_t head;
+    uint8_t tail;
+    uint8_t size;
+} fifo_t;
+void fifo_init(fifo_t* f, uint8_t* buf, uint8_t size){
+    f->head = 0;
+    f->tail = 0;
+    f->size = size;
+    f->buf = buf;
+}
+uint8_t fifo_push(fifo* f, uint8_t val) {
+    if (f->head + 1 == f->tail || (f->head +1 == f->size && 0 == f->tail)) {
+        return 0;
+    }
+
+    f->buff[t->head] = val;
+    f->head++;
+    if (f->head == f->size) {
+        f->head = 0;
+    }
+
+    return 1;
+}
+uint8_t fifo_pop(fifo_t* f, uint8_t* val) {
+    if (f->tail == f->head) {
+        return 0;
+    }
+
+    uint8_t tmp = f->buf[f->tail];
+    f->tail++;
+    if (f->tail == f->size) {
+        f->tail = 0;
+    }
+
+    *val = tmp;
+
+    return 1;
+}
+
 DHT dht(DHTPIN, DHTTYPE);
 LiquidCrystal_I2C lcd(0x27, 2, 1, 0, 4, 5, 6, 7, 3, POSITIVE);
 
@@ -33,7 +74,7 @@ static char txt[150];
 static uint32_t index;
 #define FUNC_LOAD_PROGRAM 1
 
-#define BT_COMMAND_LISTEN    255
+#define BT_COMMAND_LISTEN 255
 
 #define BT_STATE_MAIN         0
 #define BT_STATE_HEAT_PROGRAM 1
@@ -54,6 +95,8 @@ static uint32_t settingProgramCounter = 0;
 
 // Heating program
 static uint8_t heatingProgram = 1;
+uint8_t btBuff[16];
+fifo_t btFifo;
 
 /// Validates input.
 class ProgramValidator {
@@ -133,7 +176,7 @@ typedef struct Program {
 #define ERR_INVALID_CRC     7
 
 /// Loaded programs.
-static Program* heatingPrograms[4];
+static Program* heatingPrograms[1];
 
 /// Manages programming heating programs.
 class ServiceProgram {
@@ -150,7 +193,7 @@ public:
         this->reset();
     }
 
-    void setProgramsContainer(Program* progContainer[4])
+    void setProgramsContainer(Program* progContainer[1])
     {
         this->programsContainer = progContainer;
     }
@@ -192,20 +235,17 @@ public:
         switch (this->state) {
             case HEATING_PROGRAM_STATE_READ_ID:
                 if (!ProgramValidator::Id(payload)) {
-                    Serial.write("\nKurwa\n");
-                    Serial.write(payload);
-                    Serial.write("\nKurwa\n");
                     this->error = ERR_INVALID_ID;
                     return 0;
                 }
 
                 this->state = HEATING_PROGRAM_STATE_READ_NAME;
-                this->programsContainer[payload] = new Program;
+                this->programsContainer[0] = new Program;
                 this->program = this->programsContainer[payload];
                 this->program->id = payload;
                 break;
             case HEATING_PROGRAM_STATE_READ_NAME:
-                if (1 == payload) {
+                if (200 == payload) {
                     this->state = HEATING_PROGRAM_STATE_READ_PROGRAM;
                     return 1;
                 }
@@ -218,8 +258,8 @@ public:
                 this->program->name[this->program->length++] = payload;
                 break;
             case HEATING_PROGRAM_STATE_READ_PROGRAM:
-                if (1 == payload) {
-                    this->state = HEATING_PROGRAM_STATE_READ_PROGRAM;
+                if (200 == payload) {
+                    this->state = HEATING_PROGRAM_STATE_READ_CRC;
                     return 1;
                 }
 
@@ -272,7 +312,7 @@ public:
 
 ServiceProgram serviceProg;
 
-void setup ()
+void setup()
 {
     Serial.begin(9600);
 
@@ -283,6 +323,7 @@ void setup ()
     lcd.begin(16, 2);
     lcd.backlight();
 
+    fifo_init(btFifo, btBuff, 16);
     serviceProg.setProgramsContainer(heatingPrograms);
 }
 
@@ -363,17 +404,18 @@ void menuAction()
             lcd.print(" | Test       ");
 
             if (btn1 && !pbtn1) {
-                lcdState = MENU_STATE_MAIN;
+                lcdState = MENU_STATE_BLUETOOTH_CONNECTION;
             }
 
             // Hold btn2 to enter change program mode.
-            if (btn2 && !pbtn2) {
-                settingProgramCounter = millis();
-                lcdState = MENU_STATE_SET_PROGRAM_ENTER;
-            }
+//            if (btn2 && !pbtn2) {
+//                settingProgramCounter = millis();
+//                lcdState = MENU_STATE_SET_PROGRAM_ENTER;
+//            }
 
             break;
         case MENU_STATE_SET_PROGRAM_ENTER:
+            /// This state will be omitted for now.
             if (!btn2) {
                 lcdState = MENU_STATE_PROGRAM;
             }
@@ -384,6 +426,7 @@ void menuAction()
 
             break;
         case MENU_STATE_SET_PROGRAM:
+            /// This state will be omitted for now.
             if (btn2 && !pbtn2) {
                 heatingProgram++;
                 if (heatingProgram > 5) {
@@ -415,26 +458,42 @@ void menuAction()
             }
 
             break;
+        case MENU_STATE_BLUETOOTH_CONNECTION:
+            if (btn1 && !pbtn1) {
+                lcdState = MENU_STATE_MAIN;
+            }
+
+            lcd.setCursor(0, 0);
+            lcd.print("Reading         ");
+            lcd.setCursor(0, 1);
+            lcd.print("Bluetooth Input ");
+
+            bluetoothReadAction();
+            break;
     }
 }
 
 static uint8_t btState = 0;
 void bluetoothReadAction()
 {
-    if (!Serial.available()) {
+    while (Serial.available()) {
+        zn = Serial.read();
+        fifo_push(btFifo, zn);
+    }
+
+    if (NULL == zn) {
         return;
     }
 
-    zn = Serial.read();
     switch (btState) {
         default:
         case BT_STATE_MAIN:
             switch (zn) {
                 case BT_STATE_HEAT_PROGRAM:
-                    Serial.write("goto:heat_program\n");
+                    Serial.write("gt:hp\n");
                     serviceProg.reset();
                     btState = BT_STATE_HEAT_PROGRAM;
-                return;
+                    break;
             }
 
             break;
@@ -442,7 +501,7 @@ void bluetoothReadAction()
             if (BT_COMMAND_LISTEN == zn) {
                 Serial.write("return\n");
                 btState = BT_STATE_MAIN;
-                return;
+                break;
             }
 
             if (serviceProg.isSuccess()) {
@@ -460,12 +519,17 @@ void bluetoothReadAction()
             } else {
                 Serial.write("err:");
                 Serial.write(serviceProg.getError() + 48);
+                Serial.write(":");
+                Serial.write(zn);
                 Serial.write("\n");
                 btState = BT_STATE_MAIN;
             }
 
             break;
     }
+
+    delay(500);
+    zn = NULL;
 }
 
 void readSensorsAction()
@@ -484,7 +548,6 @@ void loop()
 
     menuAction();
     readSensorsAction();
-    bluetoothReadAction();
 
     pbtn1 = btn1;
     pbtn2 = btn2;
