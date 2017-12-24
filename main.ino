@@ -12,39 +12,43 @@ typedef struct fifo_t {
     uint8_t tail;
     uint8_t size;
 } fifo_t;
-void fifo_init(fifo_t* f, uint8_t* buf, uint8_t size){
-    f->head = 0;
-    f->tail = 0;
-    f->size = size;
-    f->buf = buf;
-}
-uint8_t fifo_push(fifo* f, uint8_t val) {
-    if (f->head + 1 == f->tail || (f->head +1 == f->size && 0 == f->tail)) {
-        return 0;
-    }
-
-    f->buff[t->head] = val;
-    f->head++;
-    if (f->head == f->size) {
+namespace {
+    void fifo_init(fifo_t *f, uint8_t *buf, uint8_t size) {
         f->head = 0;
-    }
-
-    return 1;
-}
-uint8_t fifo_pop(fifo_t* f, uint8_t* val) {
-    if (f->tail == f->head) {
-        return 0;
-    }
-
-    uint8_t tmp = f->buf[f->tail];
-    f->tail++;
-    if (f->tail == f->size) {
         f->tail = 0;
+        f->buf = buf;
+        f->size = size;
     }
 
-    *val = tmp;
+    uint8_t fifo_push(fifo_t *f, uint8_t val) {
+        if (f->head + 1 == f->tail || (f->head + 1 == f->size && 0 == f->tail)) {
+            return 0;
+        }
 
-    return 1;
+        f->buf[f->head] = val;
+        f->head++;
+        if (f->head == f->size) {
+            f->head = 0;
+        }
+
+        return 1;
+    }
+
+    uint8_t fifo_pop(fifo_t *f, uint8_t *val) {
+        if (f->tail == f->head) {
+            return 0;
+        }
+
+        uint8_t tmp = f->buf[f->tail];
+        f->tail++;
+        if (f->tail == f->size) {
+            f->tail = 0;
+        }
+
+        *val = tmp;
+
+        return 1;
+    }
 }
 
 DHT dht(DHTPIN, DHTTYPE);
@@ -69,8 +73,7 @@ static uint8_t pbtn1;
 static uint8_t btn2;
 static uint8_t pbtn2;
 // Bluetooth
-static char zn;
-static char txt[150];
+static uint8_t zn;
 static uint32_t index;
 #define FUNC_LOAD_PROGRAM 1
 
@@ -323,7 +326,7 @@ void setup()
     lcd.begin(16, 2);
     lcd.backlight();
 
-    fifo_init(btFifo, btBuff, 16);
+    fifo_init(&btFifo, btBuff, 16);
     serviceProg.setProgramsContainer(heatingPrograms);
 }
 
@@ -477,55 +480,52 @@ static uint8_t btState = 0;
 void bluetoothReadAction()
 {
     while (Serial.available()) {
-        zn = Serial.read();
-        fifo_push(btFifo, zn);
+        fifo_push(&btFifo, Serial.read());
     }
 
-    if (NULL == zn) {
-        return;
-    }
+    while (fifo_pop(&btFifo, &zn)) {
+        switch (btState) {
+            default:
+            case BT_STATE_MAIN:
+                switch (zn) {
+                    case BT_STATE_HEAT_PROGRAM:
+                        Serial.write("gt:hp\n");
+                        serviceProg.reset();
+                        btState = BT_STATE_HEAT_PROGRAM;
+                        break;
+                }
 
-    switch (btState) {
-        default:
-        case BT_STATE_MAIN:
-            switch (zn) {
-                case BT_STATE_HEAT_PROGRAM:
-                    Serial.write("gt:hp\n");
-                    serviceProg.reset();
-                    btState = BT_STATE_HEAT_PROGRAM;
-                    break;
-            }
-
-            break;
-        case BT_STATE_HEAT_PROGRAM:
-            if (BT_COMMAND_LISTEN == zn) {
-                Serial.write("return\n");
-                btState = BT_STATE_MAIN;
                 break;
-            }
+            case BT_STATE_HEAT_PROGRAM:
+                if (BT_COMMAND_LISTEN == zn) {
+                    Serial.write("return\n");
+                    btState = BT_STATE_MAIN;
+                    break;
+                }
 
-            if (serviceProg.isSuccess()) {
-                Serial.write("success\n");
-                btState = BT_STATE_MAIN;
-                serviceProg.state = HEATING_PROGRAM_STATE_READ_ID;
-            } else if (serviceProg.read(zn)) {
-                Serial.write("ok:char:");
-                Serial.write(zn + 48);
-                Serial.write(":");
-                Serial.write(zn);
-                Serial.write(":state:");
-                Serial.write(serviceProg.state + 48);
-                Serial.write("\n");
-            } else {
-                Serial.write("err:");
-                Serial.write(serviceProg.getError() + 48);
-                Serial.write(":");
-                Serial.write(zn);
-                Serial.write("\n");
-                btState = BT_STATE_MAIN;
-            }
+                if (serviceProg.isSuccess()) {
+                    Serial.write("success\n");
+                    btState = BT_STATE_MAIN;
+                    serviceProg.state = HEATING_PROGRAM_STATE_READ_ID;
+                } else if (serviceProg.read(zn)) {
+                    Serial.write("ok:char:");
+                    Serial.write(zn + 48);
+                    Serial.write(":");
+                    Serial.write(zn);
+                    Serial.write(":state:");
+                    Serial.write(serviceProg.state + 48);
+                    Serial.write("\n");
+                } else {
+                    Serial.write("err:");
+                    Serial.write(serviceProg.getError() + 48);
+                    Serial.write(":");
+                    Serial.write(zn);
+                    Serial.write("\n");
+                    btState = BT_STATE_MAIN;
+                }
 
-            break;
+                break;
+        }
     }
 
     delay(500);
