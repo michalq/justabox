@@ -91,10 +91,20 @@ static uint32_t index;
 #define MENU_STATE_SET_PROGRAM_ENTER    3
 #define MENU_STATE_SET_PROGRAM          4
 #define MENU_STATE_BLUETOOTH_CONNECTION 5
+#define MENU_STATE_SET_CLOCK            6
 
 static uint32_t menuBlinkTimStatus;
 static uint32_t menuBlinkTimDiff;
 static uint32_t settingProgramCounter = 0;
+
+// Clock
+uint8_t clockDay = 1;
+uint8_t clockHour = 0;
+uint8_t clockMin = 0;
+uint8_t clockSec = 0;
+uint8_t clockState = 0;
+uint32_t clockBlinkDiff;
+uint32_t clockBlinkTimStatus;
 
 // Heating program
 static uint8_t heatingProgram = 1;
@@ -106,7 +116,7 @@ class ProgramValidator {
 public:
     static uint8_t Name(uint8_t tmpChar, uint8_t length)
     {
-        if (length > 8) {
+        if (length > 16) {
             return 0;
         }
 
@@ -158,7 +168,7 @@ typedef struct Program {
     uint8_t length = 0;
     /// Max 8 chars per name
     /// allowed chars a-zA-Z and space, in ascii 69-90, 97-122, 32
-    char name[8];
+    char name[16];
     uint8_t nameLength = 0;
     uint8_t id = 0;
 } Program;
@@ -177,6 +187,8 @@ typedef struct Program {
 #define ERR_INVALID_HOUR    5
 #define ERR_INVALID_TEMP    6
 #define ERR_INVALID_CRC     7
+
+#define RETURN_TO_MAIN_IF_NO_BACKLIGHT if (2 == backlighState) lcdState = MENU_STATE_MAIN;
 
 /// Loaded programs.
 static Program* heatingPrograms[1];
@@ -302,10 +314,6 @@ public:
             case HEATING_PROGRAM_STATE_READ_CRC:
                 this->state = HEATING_PROGRAM_STATE_READ_END;
                 // TODO check if crc is correct.
-                if (0) {
-                    this->error = ERR_INVALID_CRC;
-                    return 0;
-                }
                 break;
         }
 
@@ -346,11 +354,7 @@ void menuAction()
         if (2 != backlighState) {
             lcd.noBacklight();
             backlighState = 2;
-            lcdState = MENU_STATE_MAIN;
         }
-
-        // No action when menu is off.
-        return;
     }
 
     switch (lcdState) {
@@ -359,73 +363,173 @@ void menuAction()
             menuBlinkTimDiff = millis() - menuBlinkTimStatus;
 
             lcd.setCursor(0, 0);
-            lcd.print("Temp      ");
+            lcd.print("Day ");
+            if (clockDay < 10) lcd.print(" ");
+            lcd.print(clockDay);
+            lcd.print("     ");
+            if (clockHour < 10) lcd.print("0");
+            lcd.print(clockHour);
+            lcd.print(":");
+            if (clockMin < 10) lcd.print("0");
+            lcd.print(clockMin);
+
+            lcd.setCursor(0, 1);
+            lcd.print("  ");
             lcd.print(temperature);
             lcd.print((char) 223);
-            lcd.print("C ");
-            lcd.print(menuBlinkTimDiff > MENU_BLINK_TIM ? "_" : " ");
-            lcd.setCursor(0, 1);
-            lcd.print("Humid     ");
+            lcd.print("C / ");
             lcd.print(humidity);
-            lcd.print("%  ");
+            lcd.print("%   ");
             lcd.print(menuBlinkTimDiff > MENU_BLINK_TIM ? "_" : " ");
 
             if (menuBlinkTimDiff > 2 * MENU_BLINK_TIM) {
                 menuBlinkTimStatus = millis();
             }
 
-            if (btn1 && !pbtn1) {
-                lcdState = MENU_STATE_PROGRAM;
-            }
-
-            if (btn2) {
-                lcdState = MENU_STATE_LIMITS;
-            }
+            /// Actions
+            if (btn1 && !pbtn1) lcdState = MENU_STATE_PROGRAM;
+            if (btn2 && !pbtn2) lcdState = MENU_STATE_SET_CLOCK;
 
             break;
-        case MENU_STATE_LIMITS:
-            lcd.setCursor(0, 0);
-            lcd.print("Min temp   ");
-            lcd.print("22");
-            lcd.print((char) 223);
-            lcd.print("C     ");
-            lcd.setCursor(0, 1);
-            lcd.print("Min humid  ");
-            lcd.print("65%      ");
+        case MENU_STATE_SET_CLOCK:
+            clockBlinkDiff = millis() - clockBlinkTimStatus;
 
-            if (!btn2) {
-                lcdState = MENU_STATE_MAIN;
+            lcd.setCursor(0, 0);
+            if (0 == clockState) {
+                if (clockBlinkDiff > MENU_BLINK_TIM) {
+                    lcd.print("Day ");
+                    if (clockDay < 10) lcd.print(" ");
+                    lcd.print(clockDay);
+                } else {
+                    lcd.print("      ");
+                }
+            } else {
+                lcd.print("Day ");
+                if (clockDay < 10) lcd.print(" ");
+                lcd.print(clockDay);
             }
 
+            lcd.print("     ");
+
+            if (1 == clockState) {
+                if (clockBlinkDiff > MENU_BLINK_TIM) {
+                    if (clockHour < 10) lcd.print("0");
+                    lcd.print(clockHour);
+                } else {
+                    lcd.print("  ");
+                }
+            } else {
+                if (clockHour < 10) lcd.print("0");
+                lcd.print(clockHour);
+            }
+
+            lcd.print(":");
+
+            if (2 == clockState) {
+                if (clockBlinkDiff > MENU_BLINK_TIM) {
+                    if (clockMin < 10) lcd.print("0");
+                    lcd.print(clockMin);
+                } else {
+                    lcd.print("  ");
+                }
+            } else {
+                if (clockMin < 10) lcd.print("0");
+                lcd.print(clockMin);
+            }
+
+            lcd.setCursor(0, 1);
+            lcd.print("                ");
+
+            if (clockBlinkDiff > 2 * MENU_BLINK_TIM) {
+                clockBlinkTimStatus = millis();
+            }
+
+            switch (clockState) {
+                case 0:
+                    if (btn2 && !pbtn2) clockState = 1;
+                    if (btn1 && !pbtn1) {
+                        clockDay++;
+                        if (clockDay > 7) {
+                            clockDay = 1;
+                        }
+                    }
+
+                    break;
+                case 1:
+                    if (btn2 && !pbtn2) clockState = 2;
+                    if (btn1 && !pbtn1) {
+                        clockHour++;
+                        if (clockHour > 23) {
+                            clockHour = 0;
+                        }
+                    }
+
+                    break;
+                case 2:
+                    if (btn2 && !pbtn2) { clockState = 0; lcdState = MENU_STATE_MAIN; };
+                    if (btn1 && !pbtn1) clockMin++;
+
+                    if (clockMin > 59) {
+                        clockMin = 0;
+                    }
+
+                    // TODO progressive
+
+                    break;
+            }
             break;
         case MENU_STATE_PROGRAM:
             lcd.setCursor(0, 0);
             lcd.print("Program         ");
             lcd.setCursor(0, 1);
-            lcd.print(" ");
-            lcd.print(heatingProgram);
-            lcd.print(" | Test       ");
-
-            if (btn1 && !pbtn1) {
-                lcdState = MENU_STATE_BLUETOOTH_CONNECTION;
+            if (NULL == serviceProg.program) {
+                lcd.print(" UNDEFINED      ");
+            } else {
+                lcd.print(serviceProg.program->name);
+                lcd.print("                ");
             }
 
+            /// Actions
+            if (btn1 && !pbtn1) lcdState = MENU_STATE_BLUETOOTH_CONNECTION;
+            if (btn2 && !pbtn2) lcdState = MENU_STATE_LIMITS;
+
+            RETURN_TO_MAIN_IF_NO_BACKLIGHT
+
             // Hold btn2 to enter change program mode.
-//            if (btn2 && !pbtn2) {
-//                settingProgramCounter = millis();
-//                lcdState = MENU_STATE_SET_PROGRAM_ENTER;
-//            }
+            //            if (btn2 && !pbtn2) {
+            //                settingProgramCounter = millis();
+            //                lcdState = MENU_STATE_SET_PROGRAM_ENTER;
+            //            }
+
+            break;
+        case MENU_STATE_LIMITS:
+            lcd.setCursor(0, 0);
+            lcd.print("Day ");
+            if (clockDay < 10) lcd.print(" ");
+            lcd.print(clockDay);
+            lcd.print("     ");
+            if (clockHour < 10) lcd.print("0");
+            lcd.print(clockHour);
+            lcd.print(":");
+            if (clockMin < 10) lcd.print("0");
+            lcd.print(clockMin);
+
+            lcd.setCursor(0, 1);
+            lcd.print("Min. temp.  22");
+            lcd.print((char) 223);
+            lcd.print("C");
+
+            /// Actions
+            if (!btn2) lcdState = MENU_STATE_PROGRAM;
+            RETURN_TO_MAIN_IF_NO_BACKLIGHT
 
             break;
         case MENU_STATE_SET_PROGRAM_ENTER:
             /// This state will be omitted for now.
-            if (!btn2) {
-                lcdState = MENU_STATE_PROGRAM;
-            }
-
-            if (millis() - settingProgramCounter > MENU_CHANGE_PROGRAM_TIM_THRESHOLD) {
-                lcdState = MENU_STATE_SET_PROGRAM;
-            }
+            /// Actions
+            if (!btn2) lcdState = MENU_STATE_PROGRAM;
+            RETURN_TO_MAIN_IF_NO_BACKLIGHT
+            if (millis() - settingProgramCounter > MENU_CHANGE_PROGRAM_TIM_THRESHOLD) lcdState = MENU_STATE_SET_PROGRAM;
 
             break;
         case MENU_STATE_SET_PROGRAM:
@@ -456,15 +560,14 @@ void menuAction()
                 lcd.print("                ");
             }
 
-            if (btn1 && !pbtn1) {
-                lcdState = MENU_STATE_PROGRAM;
-            }
+            /// Actions
+            if (btn1 && !pbtn1) lcdState = MENU_STATE_PROGRAM;
+            RETURN_TO_MAIN_IF_NO_BACKLIGHT
 
             break;
         case MENU_STATE_BLUETOOTH_CONNECTION:
-            if (btn1 && !pbtn1) {
-                lcdState = MENU_STATE_MAIN;
-            }
+            /// Actions
+            if (btn1 && !pbtn1) lcdState = MENU_STATE_MAIN;
 
             lcd.setCursor(0, 0);
             lcd.print("Reading         ");
@@ -472,6 +575,7 @@ void menuAction()
             lcd.print("Bluetooth Input ");
 
             bluetoothReadAction();
+
             break;
     }
 }
@@ -479,6 +583,11 @@ void menuAction()
 static uint8_t btState = 0;
 void bluetoothReadAction()
 {
+    // TODO listening for conection just here? Is it possible?
+    if (!Serial.available()) {
+        return;
+    }
+
     while (Serial.available()) {
         fifo_push(&btFifo, Serial.read());
     }

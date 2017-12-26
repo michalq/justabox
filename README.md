@@ -6,36 +6,25 @@
 
 # BT test
 ```bash
-# Start recording
-printf '\001' > /dev/rfcomm0
+# Start recording & set id=1 <1, 4> & set name 'xyz'
+printf '\001\001xyz\xC8' > /dev/rfcomm0
 
-# Set id=1 <1, 4>
-printf '\001' > /dev/rfcomm0
+# Send day, hour from, hour to, temperature
+printf "\x$(printf "%x%x%x%x" 1 0 11 23)"
+printf "\x$(printf "%x%x%x%x" 1 12 23 23)"
+printf "\x$(printf "%x%x%x%x" 2 0 11 23)"
+printf "\x$(printf "%x%x%x%x" 2 12 23 23)"
+printf "\x$(printf "%x%x%x%x" 3 0 11 23)"
+printf "\x$(printf "%x%x%x%x" 3 12 23 23)"
+printf "\x$(printf "%x%x%x%x" 4 0 11 23)"
+printf "\x$(printf "%x%x%x%x" 4 12 23 23)"
+printf "\x$(printf "%x%x%x%x" 5 0 11 23)"
+printf "\x$(printf "%x%x%x%x" 5 12 23 23)"
+printf "\x$(printf "%x%x%x%x" 6 0 11 23)"
+printf "\x$(printf "%x%x%x%x" 6 12 23 23)"
+printf "\x$(printf "%x%x%x%x" 7 0 11 23)"
+printf "\x$(printf "%x%x%x%x" 7 12 23 23)"
 
-# Send name
-printf 'x' > /dev/rfcomm0
-printf 'y' > /dev/rfcomm0
-printf 'z' > /dev/rfcomm0
-printf '\xC8' > /dev/rfcomm0
-
-# Send day
-printf '\001' > /dev/rfcomm0
-
-# Send hour from
-printf "\x$(printf "%x" 0)"
-
-# Send hour to
-printf "\x$(printf "%x" 12)"
-
-# Send temperature
-printf "\x$(printf "%x" 23)"
-
-# Send end byte
-printf '\xC8' > /dev/rfcomm0
-
-# Send CRC
-printf '\001' > /dev/rfcomm0
-
-# Send end byte
-printf '\xC8' > /dev/rfcomm0
+# Send end byte, crc, end byte
+printf '\xC8\001\xC8' > /dev/rfcomm0
 ```
