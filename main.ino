@@ -105,6 +105,7 @@ uint8_t clockSec = 0;
 uint8_t clockState = 0;
 uint32_t clockBlinkDiff;
 uint32_t clockBlinkTimStatus;
+uint32_t clockProgressiveTim;
 
 // Heating program
 static uint8_t heatingProgram = 1;
@@ -447,7 +448,7 @@ void menuAction()
             switch (clockState) {
                 case 0:
                     if (btn2 && !pbtn2) clockState = 1;
-                    if (btn1 && !pbtn1) {
+                    if (btn1) {
                         clockDay++;
                         if (clockDay > 7) {
                             clockDay = 1;
@@ -457,17 +458,20 @@ void menuAction()
                     break;
                 case 1:
                     if (btn2 && !pbtn2) clockState = 2;
-                    if (btn1 && !pbtn1) {
+                    if (btn1) {
                         clockHour++;
-                        if (clockHour > 23) {
-                            clockHour = 0;
-                        }
+                    }
+
+                    if (clockHour > 23) {
+                        clockHour = 0;
                     }
 
                     break;
                 case 2:
                     if (btn2 && !pbtn2) { clockState = 0; lcdState = MENU_STATE_MAIN; };
-                    if (btn1 && !pbtn1) clockMin++;
+                    if (btn1) {
+                        clockMin++;
+                    }
 
                     if (clockMin > 59) {
                         clockMin = 0;
