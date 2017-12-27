@@ -350,12 +350,6 @@ void menuAction()
         lcdLightTim = millis();
     }
 
-    if (millis() - clockTim > 1000) { clockSec++; clockTim = millis(); }
-    if (clockSec > 59) { clockSec = 0; clockMin++; }
-    if (clockMin > 59) { clockMin = 0; clockHour++; }
-    if (clockHour > 23) { clockHour = 0; clockDay++; }
-    if (clockDay > 7) { clockDay = 0; }
-
     if (millis() - lcdLightTim < LCD_LIGHT_MAX_TIM) {
         if (1 != backlighState) {
             lcd.backlight();
@@ -680,7 +674,10 @@ void bluetoothReadAction()
     zn = NULL;
 }
 
-void readSensorsAction()
+/**
+ * Reads sensors.
+ */
+inline void readSensors()
 {
     if ((millis() - sensorReadTim) >= SENSOR_READ_INTERVAL) {
         humidity = dht.readHumidity();
@@ -689,13 +686,26 @@ void readSensorsAction()
     }
 }
 
+/**
+ * Manages clock calculations.
+ */
+inline void clock()
+{
+    if (millis() - clockTim > 1000) { clockSec++; clockTim = millis(); }
+    if (clockSec > 59) { clockSec = 0; clockMin++; }
+    if (clockMin > 59) { clockMin = 0; clockHour++; }
+    if (clockHour > 23) { clockHour = 0; clockDay++; }
+    if (clockDay > 7) { clockDay = 0; }
+}
+
 void loop()
 {
     btn1 = digitalRead(PIN_BTN1);
     btn2 = digitalRead(PIN_BTN2);
 
+    clock();
     menuAction();
-    readSensorsAction();
+    readSensors();
 
     pbtn1 = btn1;
     pbtn2 = btn2;
