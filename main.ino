@@ -60,7 +60,7 @@ static uint8_t temperature;
 static uint8_t humidity;
 static uint32_t sensorReadTim = -9999;
 // LCD
-#define LCD_LIGHT_MAX_TIM 5000
+#define LCD_LIGHT_MAX_TIM 10000
 static uint8_t backlighState = 0;
 static uint8_t lcdState = 0;
 static uint8_t lcdLight = 0;
@@ -98,6 +98,9 @@ static uint32_t menuBlinkTimDiff;
 static uint32_t settingProgramCounter = 0;
 
 // Clock
+#define CLOCK_PROGRESSIVE_THRESHOLD        1000
+#define CLOCK_PROGRESSIVE_THRESHOLD_SECOND 1000
+uint32_t clockTim = 0;
 uint8_t clockDay = 1;
 uint8_t clockHour = 0;
 uint8_t clockMin = 0;
@@ -106,6 +109,8 @@ uint8_t clockState = 0;
 uint32_t clockBlinkDiff;
 uint32_t clockBlinkTimStatus;
 uint32_t clockProgressiveTim;
+uint32_t clockProgressiveState = 0;
+uint32_t clockProgressiveTriggerTim;
 
 // Heating program
 static uint8_t heatingProgram = 1;
@@ -345,6 +350,12 @@ void menuAction()
         lcdLightTim = millis();
     }
 
+    if (millis() - clockTim > 1000) { clockSec++; clockTim = millis(); }
+    if (clockSec > 59) { clockSec = 0; clockMin++; }
+    if (clockMin > 59) { clockMin = 0; clockHour++; }
+    if (clockHour > 23) { clockHour = 0; clockDay++; }
+    if (clockDay > 7) { clockDay = 0; }
+
     if (millis() - lcdLightTim < LCD_LIGHT_MAX_TIM) {
         if (1 != backlighState) {
             lcd.backlight();
@@ -396,7 +407,7 @@ void menuAction()
             clockBlinkDiff = millis() - clockBlinkTimStatus;
 
             lcd.setCursor(0, 0);
-            if (0 == clockState) {
+            if (0 == clockProgressiveState && 0 == clockState) {
                 if (clockBlinkDiff > MENU_BLINK_TIM) {
                     lcd.print("Day ");
                     if (clockDay < 10) lcd.print(" ");
@@ -412,7 +423,7 @@ void menuAction()
 
             lcd.print("     ");
 
-            if (1 == clockState) {
+            if (0 == clockProgressiveState && 1 == clockState) {
                 if (clockBlinkDiff > MENU_BLINK_TIM) {
                     if (clockHour < 10) lcd.print("0");
                     lcd.print(clockHour);
@@ -426,7 +437,7 @@ void menuAction()
 
             lcd.print(":");
 
-            if (2 == clockState) {
+            if (0 == clockProgressiveState && 2 == clockState) {
                 if (clockBlinkDiff > MENU_BLINK_TIM) {
                     if (clockMin < 10) lcd.print("0");
                     lcd.print(clockMin);
@@ -445,42 +456,66 @@ void menuAction()
                 clockBlinkTimStatus = millis();
             }
 
+            switch (clockProgressiveState) {
+                case 0:
+                    if (btn1 && !pbtn1) {
+                        clockProgressiveState = 1;
+                        clockProgressiveTim = millis();
+                    }
+                    break;
+                case 1:
+                    if (!btn1) clockProgressiveState = 0;
+                    if (millis() - clockProgressiveTim > CLOCK_PROGRESSIVE_THRESHOLD) {
+                        clockProgressiveState = 2;
+                        clockProgressiveTim = millis();
+                    }
+
+                    // Break whole function.
+                    return;
+                case 2:
+                    if (!btn1) clockProgressiveState = 0;
+                    if (millis() - clockProgressiveTim > CLOCK_PROGRESSIVE_THRESHOLD_SECOND) clockProgressiveState = 3;
+                    if (millis() - clockProgressiveTriggerTim > 300) {
+                        clockProgressiveTriggerTim = millis();
+                    } else {
+                        // Break whole function.
+                        return;
+                    }
+
+                    break;
+                case 3:
+                    if (!btn1) clockProgressiveState = 0;
+                    if (millis() - clockProgressiveTriggerTim > 150) {
+                        clockProgressiveTriggerTim = millis();
+                    } else {
+                        // Break whole function.
+                        return;
+                    }
+
+                    break;
+            }
+
             switch (clockState) {
                 case 0:
                     if (btn2 && !pbtn2) clockState = 1;
-                    if (btn1) {
-                        clockDay++;
-                        if (clockDay > 7) {
-                            clockDay = 1;
-                        }
-                    }
+                    if (btn1) clockDay++;
+                    if (clockDay > 7) clockDay = 1;
 
                     break;
                 case 1:
                     if (btn2 && !pbtn2) clockState = 2;
-                    if (btn1) {
-                        clockHour++;
-                    }
-
-                    if (clockHour > 23) {
-                        clockHour = 0;
-                    }
+                    if (btn1) clockHour++;
+                    if (clockHour > 23) clockHour = 0;
 
                     break;
                 case 2:
                     if (btn2 && !pbtn2) { clockState = 0; lcdState = MENU_STATE_MAIN; };
-                    if (btn1) {
-                        clockMin++;
-                    }
-
-                    if (clockMin > 59) {
-                        clockMin = 0;
-                    }
-
-                    // TODO progressive
+                    if (btn1) clockMin++;
+                    if (clockMin > 59) clockMin = 0;
 
                     break;
             }
+
             break;
         case MENU_STATE_PROGRAM:
             lcd.setCursor(0, 0);
