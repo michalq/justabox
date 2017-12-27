@@ -407,10 +407,12 @@ void menuAction()
             lcd.print("C / ");
             lcd.print(humidity);
             lcd.print("%   ");
-            lcd.print(menuBlinkTimDiff > MENU_BLINK_TIM ? "_" : " ");
+            if (NULL != currTemp && currTemp > temperature) {
+                lcd.print(menuBlinkTimDiff > MENU_BLINK_TIM ? "_" : " ");
 
-            if (menuBlinkTimDiff > 2 * MENU_BLINK_TIM) {
-                menuBlinkTimStatus = millis();
+                if (menuBlinkTimDiff > 2 * MENU_BLINK_TIM) {
+                    menuBlinkTimStatus = millis();
+                }
             }
 
             /// Actions
@@ -541,6 +543,7 @@ void menuAction()
             } else {
                 lcd.print(serviceProg.program->name);
                 lcd.print("                ");
+                refreshTemperature();
             }
 
             /// Actions
