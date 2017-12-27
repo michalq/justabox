@@ -527,13 +527,12 @@ void menuAction()
             if (btn2 && !pbtn2) lcdState = MENU_STATE_LIMITS;
 
             RETURN_TO_MAIN_IF_NO_BACKLIGHT
-
-            // Hold btn2 to enter change program mode.
-            //            if (btn2 && !pbtn2) {
-            //                settingProgramCounter = millis();
-            //                lcdState = MENU_STATE_SET_PROGRAM_ENTER;
-            //            }
-
+#if 0 // Disabled.
+            if (btn2 && !pbtn2) {
+                settingProgramCounter = millis();
+                lcdState = MENU_STATE_SET_PROGRAM_ENTER;
+            }
+#endif
             break;
         case MENU_STATE_LIMITS:
             lcd.setCursor(0, 0);
@@ -548,7 +547,7 @@ void menuAction()
             lcd.print(clockMin);
 
             lcd.setCursor(0, 1);
-            lcd.print("Min. temp.  22");
+            lcd.print("Min. temp.  --"); // TODO
             lcd.print((char) 223);
             lcd.print("C");
 
@@ -557,6 +556,7 @@ void menuAction()
             RETURN_TO_MAIN_IF_NO_BACKLIGHT
 
             break;
+#if 0 // Disabled
         case MENU_STATE_SET_PROGRAM_ENTER:
             /// This state will be omitted for now.
             /// Actions
@@ -598,6 +598,7 @@ void menuAction()
             RETURN_TO_MAIN_IF_NO_BACKLIGHT
 
             break;
+#endif
         case MENU_STATE_BLUETOOTH_CONNECTION:
             /// Actions
             if (btn1 && !pbtn1) lcdState = MENU_STATE_MAIN;
@@ -700,10 +701,11 @@ inline void clock()
 
 void loop()
 {
+    clock();
+
     btn1 = digitalRead(PIN_BTN1);
     btn2 = digitalRead(PIN_BTN2);
 
-    clock();
     menuAction();
     readSensors();
 
