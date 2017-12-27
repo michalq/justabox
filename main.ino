@@ -116,6 +116,7 @@ uint32_t clockProgressiveTriggerTim;
 static uint8_t heatingProgram = 1;
 uint8_t btBuff[16];
 fifo_t btFifo;
+uint8_t currTemp = NULL;
 
 /// Validates input.
 class ProgramValidator {
@@ -214,6 +215,26 @@ public:
         this->reset();
     }
 
+    uint8_t checkTemperature(uint8_t currDay, uint8_t currHour, uint8_t currMin)
+    {
+        if (NULL == this->program) {
+            return NULL;
+        }
+
+        uint8_t day, hourFrom, hourTo, temp = NULL, iter;
+        iter = this->program->length / 4;
+        for (uint8_t i = 0; i <= iter; i += 4) {
+            day = this->program->payload[i];
+            if (temp != currDay) continue;
+            hourFrom = this->program->payload[i + 1];
+            if (currHour < hourFrom) continue;
+            hourTo = this->program->payload[i + 2];
+            if (currHour > hourTo) continue;
+            temp = this->program->payload[i + 3];
+        }
+
+        return temp;
+    }
     void setProgramsContainer(Program* progContainer[1])
     {
         this->programsContainer = progContainer;
@@ -547,7 +568,14 @@ void menuAction()
             lcd.print(clockMin);
 
             lcd.setCursor(0, 1);
-            lcd.print("Min. temp.  --"); // TODO
+            if (NULL == currTemp) {
+                lcd.print("Min. temp.  --");
+            } else {
+                lcd.print("Min. temp.  ");
+                if (currTemp < 10) lcd.print("0");
+                lcd.print(currTemp);
+            }
+
             lcd.print((char) 223);
             lcd.print("C");
 
@@ -694,9 +722,20 @@ inline void clock()
 {
     if (millis() - clockTim > 1000) { clockSec++; clockTim = millis(); }
     if (clockSec > 59) { clockSec = 0; clockMin++; }
-    if (clockMin > 59) { clockMin = 0; clockHour++; }
+    if (clockMin > 59) {
+        clockMin = 0; clockHour++;
+        refreshTemperature();
+    }
     if (clockHour > 23) { clockHour = 0; clockDay++; }
     if (clockDay > 7) { clockDay = 0; }
+}
+
+/**
+ *
+ */
+inline void refreshTemperature()
+{
+    currTemp = serviceProg.checkTemperature(clockDay, clockHour, clockMin);
 }
 
 void loop()
