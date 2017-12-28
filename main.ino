@@ -112,8 +112,6 @@ uint32_t clockProgressiveTim;
 uint32_t clockProgressiveState = 0;
 uint32_t clockProgressiveTriggerTim;
 
-// Heating program
-static uint8_t heatingProgram = 1;
 uint8_t btBuff[16];
 fifo_t btFifo;
 uint8_t currTemp = NULL;
@@ -197,8 +195,12 @@ typedef struct Program {
 
 #define RETURN_TO_MAIN_IF_NO_BACKLIGHT if (2 == backlighState) lcdState = MENU_STATE_MAIN;
 
+#if 0
+// Heating program
+static uint8_t heatingProgram = 1;
 /// Loaded programs.
 static Program* heatingPrograms[1];
+#endif
 
 /// Manages programming heating programs.
 class ServiceProgram {
@@ -212,12 +214,13 @@ public:
     /// Constructor.
     ServiceProgram()
     {
+        this->program = new Program;
         this->reset();
     }
 
     uint8_t checkTemperature(uint8_t currDay, uint8_t currHour, uint8_t currMin)
     {
-        if (NULL == this->program) {
+        if (0 == this->program->length) {
             return NULL;
         }
 
@@ -235,10 +238,6 @@ public:
 
         return temp;
     }
-    void setProgramsContainer(Program* progContainer[1])
-    {
-        this->programsContainer = progContainer;
-    }
 
     uint8_t calculateCrc()
     {
@@ -249,8 +248,10 @@ public:
     void reset()
     {
         this->error = NULL;
-        this->program = NULL;
         this->state = HEATING_PROGRAM_STATE_READ_ID;
+        this->program->nameLength = 0;
+        this->program->length = 0;
+        this->program->id = 0;
     }
 
     uint8_t getError()
@@ -276,36 +277,37 @@ public:
 
         switch (this->state) {
             case HEATING_PROGRAM_STATE_READ_ID:
+                /// Rading ID
                 if (!ProgramValidator::Id(payload)) {
                     this->error = ERR_INVALID_ID;
                     return 0;
                 }
 
                 this->state = HEATING_PROGRAM_STATE_READ_NAME;
-                this->programsContainer[0] = new Program;
-                this->program = this->programsContainer[payload];
                 this->program->id = payload;
                 break;
             case HEATING_PROGRAM_STATE_READ_NAME:
+                /// Reading Name
                 if (200 == payload) {
                     this->state = HEATING_PROGRAM_STATE_READ_PROGRAM;
                     return 1;
                 }
 
-                if (!ProgramValidator::Name(payload, this->program->length)) {
+                if (!ProgramValidator::Name(payload, this->program->nameLength)) {
                     this->error = ERR_INVALID_NAME;
                     return 0;
                 }
 
-                this->program->name[this->program->length++] = payload;
+                this->program->name[this->program->nameLength++] = payload;
                 break;
             case HEATING_PROGRAM_STATE_READ_PROGRAM:
+                /// Reading program
                 if (200 == payload) {
                     this->state = HEATING_PROGRAM_STATE_READ_CRC;
                     return 1;
                 }
 
-                switch (this->program->length % 3) {
+                switch (this->program->length % 4) {
                     case 0:
                         /// Reading day
                         if (!ProgramValidator::Day(payload)) {
@@ -362,7 +364,6 @@ void setup()
     lcd.backlight();
 
     fifo_init(&btFifo, btBuff, 16);
-    serviceProg.setProgramsContainer(heatingPrograms);
 }
 
 void menuAction()
@@ -526,7 +527,11 @@ void menuAction()
 
                     break;
                 case 2:
-                    if (btn2 && !pbtn2) { clockState = 0; lcdState = MENU_STATE_MAIN; };
+                    if (btn2 && !pbtn2) {
+                        clockState = 0;
+                        lcdState = MENU_STATE_MAIN;
+                        refreshTemperature();
+                    }
                     if (btn1) clockMin++;
                     if (clockMin > 59) clockMin = 0;
 
@@ -543,7 +548,6 @@ void menuAction()
             } else {
                 lcd.print(serviceProg.program->name);
                 lcd.print("                ");
-                refreshTemperature();
             }
 
             /// Actions

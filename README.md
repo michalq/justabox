@@ -10,21 +10,12 @@
 printf '\001\001xyz\xC8' > /dev/rfcomm0
 
 # Send day, hour from, hour to, temperature
-printf "\x$(printf "%x%x%x%x" 1 0 11 23)"
-printf "\x$(printf "%x%x%x%x" 1 12 23 23)"
-printf "\x$(printf "%x%x%x%x" 2 0 11 23)"
-printf "\x$(printf "%x%x%x%x" 2 12 23 23)"
-printf "\x$(printf "%x%x%x%x" 3 0 11 23)"
-printf "\x$(printf "%x%x%x%x" 3 12 23 23)"
-printf "\x$(printf "%x%x%x%x" 4 0 11 23)"
-printf "\x$(printf "%x%x%x%x" 4 12 23 23)"
-printf "\x$(printf "%x%x%x%x" 5 0 11 23)"
-printf "\x$(printf "%x%x%x%x" 5 12 23 23)"
-printf "\x$(printf "%x%x%x%x" 6 0 11 23)"
-printf "\x$(printf "%x%x%x%x" 6 12 23 23)"
-printf "\x$(printf "%x%x%x%x" 7 0 11 23)"
-printf "\x$(printf "%x%x%x%x" 7 12 23 23)"
+printf "\001\x$(printf "%x" 0)\x$(printf "%x" 11)\x$(printf "%x" 23)" > /dev/rfcomm0
+printf "\001\x$(printf "%x" 12)\x$(printf "%x" 23)\x$(printf "%x" 19)" > /dev/rfcomm0
 
 # Send end byte, crc, end byte
 printf '\xC8\001\xC8' > /dev/rfcomm0
+
+#
+printf '\xC8' > /dev/rfcomm0
 ```
