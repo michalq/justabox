@@ -234,6 +234,7 @@ public:
             hourTo = this->program->payload[i + 2];
             if (currHour > hourTo) continue;
             temp = this->program->payload[i + 3];
+            break;
         }
 
         return temp;
