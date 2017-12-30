@@ -114,7 +114,7 @@ uint32_t clockProgressiveTriggerTim;
 
 uint8_t btBuff[16];
 fifo_t btFifo;
-uint8_t currTemp = NULL;
+uint8_t currTempLimit = NULL;
 
 /// Validates input.
 class ProgramValidator {
@@ -225,10 +225,11 @@ public:
         }
 
         uint8_t day, hourFrom, hourTo, temp = NULL, iter;
-        iter = this->program->length / 4;
-        for (uint8_t i = 0; i <= iter; i += 4) {
+
+        iter = this->program->length;
+        for (uint8_t i = 0; i < iter; i += 4) {
             day = this->program->payload[i];
-            if (temp != currDay) continue;
+            if (day != currDay) continue;
             hourFrom = this->program->payload[i + 1];
             if (currHour < hourFrom) continue;
             hourTo = this->program->payload[i + 2];
@@ -251,6 +252,7 @@ public:
         this->error = NULL;
         this->state = HEATING_PROGRAM_STATE_READ_ID;
         this->program->nameLength = 0;
+        this->program->name[0] = '\0';
         this->program->length = 0;
         this->program->id = 0;
     }
@@ -300,6 +302,8 @@ public:
                 }
 
                 this->program->name[this->program->nameLength++] = payload;
+                this->program->name[this->program->nameLength] = '\0';
+
                 break;
             case HEATING_PROGRAM_STATE_READ_PROGRAM:
                 /// Reading program
@@ -408,8 +412,8 @@ void menuAction()
             lcd.print((char) 223);
             lcd.print("C / ");
             lcd.print(humidity);
-            lcd.print("%   ");
-            if (NULL != currTemp && currTemp > temperature) {
+            lcd.print("%    ");
+            if (NULL != currTempLimit && currTempLimit > temperature) {
                 lcd.print(menuBlinkTimDiff > MENU_BLINK_TIM ? "_" : " ");
 
                 if (menuBlinkTimDiff > 2 * MENU_BLINK_TIM) {
@@ -531,7 +535,8 @@ void menuAction()
                     if (btn2 && !pbtn2) {
                         clockState = 0;
                         lcdState = MENU_STATE_MAIN;
-                        refreshTemperature();
+                        // Refresh after updating hour.
+                        refreshTemperatureLimit();
                     }
                     if (btn1) clockMin++;
                     if (clockMin > 59) clockMin = 0;
@@ -553,7 +558,11 @@ void menuAction()
 
             /// Actions
             if (btn1 && !pbtn1) lcdState = MENU_STATE_BLUETOOTH_CONNECTION;
-            if (btn2 && !pbtn2) lcdState = MENU_STATE_LIMITS;
+            if (btn2 && !pbtn2) {
+                lcdState = MENU_STATE_LIMITS;
+                // Refresh after checking for boundaries.
+                refreshTemperatureLimit();
+            }
 
             RETURN_TO_MAIN_IF_NO_BACKLIGHT
 #if 0 // Disabled.
@@ -576,12 +585,12 @@ void menuAction()
             lcd.print(clockMin);
 
             lcd.setCursor(0, 1);
-            if (NULL == currTemp) {
+            if (NULL == currTempLimit) {
                 lcd.print("Min. temp.  --");
             } else {
                 lcd.print("Min. temp.  ");
-                if (currTemp < 10) lcd.print("0");
-                lcd.print(currTemp);
+                if (currTempLimit < 10) lcd.print("0");
+                lcd.print(currTempLimit);
             }
 
             lcd.print((char) 223);
@@ -731,8 +740,9 @@ inline void clock()
     if (millis() - clockTim > 1000) { clockSec++; clockTim = millis(); }
     if (clockSec > 59) { clockSec = 0; clockMin++; }
     if (clockMin > 59) {
-        clockMin = 0; clockHour++;
-        refreshTemperature();
+        clockMin = 0;
+        clockHour++;
+        refreshTemperatureLimit();
     }
     if (clockHour > 23) { clockHour = 0; clockDay++; }
     if (clockDay > 7) { clockDay = 0; }
@@ -741,9 +751,9 @@ inline void clock()
 /**
  *
  */
-inline void refreshTemperature()
+inline void refreshTemperatureLimit()
 {
-    currTemp = serviceProg.checkTemperature(clockDay, clockHour, clockMin);
+    currTempLimit = serviceProg.checkTemperature(clockDay, clockHour, clockMin);
 }
 
 void loop()
