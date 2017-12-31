@@ -418,13 +418,15 @@ void menuAction()
             lcd.print((char) 223);
             lcd.print("C / ");
             lcd.print(humidity);
-            lcd.print("%    ");
-            if (HEATING_STATE_ON) {
+            lcd.print("%   ");
+            if (HEATING_STATE_ON == heatingState) {
                 lcd.print(menuBlinkTimDiff > MENU_BLINK_TIM ? "_" : " ");
 
                 if (menuBlinkTimDiff > 2 * MENU_BLINK_TIM) {
                     menuBlinkTimStatus = millis();
                 }
+            } else {
+                lcd.print(" ");
             }
 
             /// Actions
@@ -794,7 +796,7 @@ void loop()
 
     menuAction();
     readSensors();
-
+    refreshPeripheralsState();
 
     pbtn1 = btn1;
     pbtn2 = btn2;
