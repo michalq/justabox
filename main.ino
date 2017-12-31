@@ -54,25 +54,25 @@ namespace {
 DHT dht(DHTPIN, DHTTYPE);
 LiquidCrystal_I2C lcd(0x27, 2, 1, 0, 4, 5, 6, 7, 3, POSITIVE);
 
-// Sensors
+/// Sensors
 #define SENSOR_READ_INTERVAL 3000 // couldn't be less than 2s
 static uint8_t temperature;
 static uint8_t humidity;
 static uint32_t sensorReadTim = -9999;
-// LCD
+/// LCD
 #define LCD_LIGHT_MAX_TIM 10000
 static uint8_t backlighState = 0;
 static uint8_t lcdState = 0;
 static uint8_t lcdLight = 0;
 static uint32_t lcdLightTim = LCD_LIGHT_MAX_TIM;
-// Control
+/// Control
 #define PIN_BTN1 7
 #define PIN_BTN2 8
 static uint8_t btn1;
 static uint8_t pbtn1;
 static uint8_t btn2;
 static uint8_t pbtn2;
-// Bluetooth
+/// Bluetooth
 static uint8_t zn;
 static uint32_t index;
 #define FUNC_LOAD_PROGRAM 1
@@ -81,7 +81,7 @@ static uint32_t index;
 
 #define BT_STATE_MAIN         0
 #define BT_STATE_HEAT_PROGRAM 1
-// Menu
+/// Menu
 #define MENU_BLINK_TIM 500
 #define MENU_CHANGE_PROGRAM_TIM_THRESHOLD 2000
 
@@ -97,7 +97,7 @@ static uint32_t menuBlinkTimStatus;
 static uint32_t menuBlinkTimDiff;
 static uint32_t settingProgramCounter = 0;
 
-// Clock
+/// Clock
 #define CLOCK_PROGRESSIVE_THRESHOLD        1000
 #define CLOCK_PROGRESSIVE_THRESHOLD_SECOND 1000
 uint32_t clockTim = 0;
@@ -195,10 +195,15 @@ typedef struct Program {
 
 #define RETURN_TO_MAIN_IF_NO_BACKLIGHT if (2 == backlighState) lcdState = MENU_STATE_MAIN;
 
+/// Heating state
+#define HEATING_STATE_OFF 0
+#define HEATING_STATE_ON 1
+#define HEATING_WIRE_PIN 6
+uint8_t heatingState = HEATING_STATE_OFF;
 #if 0
-// Heating program
+/// Heating program
 static uint8_t heatingProgram = 1;
-/// Loaded programs.
+// Loaded programs.
 static Program* heatingPrograms[1];
 #endif
 
@@ -363,6 +368,7 @@ void setup()
 
     pinMode(PIN_BTN1, INPUT);
     pinMode(PIN_BTN2, INPUT);
+    pinMode(HEATING_WIRE_PIN, OUTPUT);
 
     dht.begin();
     lcd.begin(16, 2);
@@ -413,7 +419,7 @@ void menuAction()
             lcd.print("C / ");
             lcd.print(humidity);
             lcd.print("%    ");
-            if (NULL != currTempLimit && currTempLimit > temperature) {
+            if (HEATING_STATE_ON) {
                 lcd.print(menuBlinkTimDiff > MENU_BLINK_TIM ? "_" : " ");
 
                 if (menuBlinkTimDiff > 2 * MENU_BLINK_TIM) {
@@ -749,11 +755,34 @@ inline void clock()
 }
 
 /**
- *
+ * According to time, checks what is the temperature setted.
  */
 inline void refreshTemperatureLimit()
 {
     currTempLimit = serviceProg.checkTemperature(clockDay, clockHour, clockMin);
+}
+
+/**
+ *
+ */
+inline void refreshPeripheralsState()
+{
+    switch (heatingState) {
+        case HEATING_STATE_ON:
+            if (NULL == currTempLimit || currTempLimit <= temperature) {
+                heatingState = HEATING_STATE_OFF;
+                digitalWrite(HEATING_WIRE_PIN, 0);
+            }
+
+            break;
+        case HEATING_STATE_OFF:
+            if (NULL != currTempLimit && currTempLimit > temperature) {
+                heatingState = HEATING_STATE_ON;
+                digitalWrite(HEATING_WIRE_PIN, 1);
+            }
+
+            break;
+    }
 }
 
 void loop()
@@ -765,6 +794,7 @@ void loop()
 
     menuAction();
     readSensors();
+
 
     pbtn1 = btn1;
     pbtn2 = btn2;
