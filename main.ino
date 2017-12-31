@@ -2,9 +2,7 @@
 #include <LiquidCrystal_I2C.h>
 #include "DHT.h"
 #include "stdarg.h"
-
-#define DHTPIN 9
-#define DHTTYPE DHT11
+#include <OneWire.h>
 
 typedef struct fifo_t {
     uint8_t* buf;
@@ -57,8 +55,13 @@ LiquidCrystal_I2C lcd(0x27, 2, 1, 0, 4, 5, 6, 7, 3, POSITIVE);
 /// Sensors
 #define SENSOR_READ_INTERVAL 3000 // couldn't be less than 2s
 static uint8_t temperature;
-static uint8_t humidity;
 static uint32_t sensorReadTim = -9999;
+#define DHTPIN 9
+#define DHTTYPE DHT11
+#define TEMP_SENSOR_PIN 10
+OneWire ds(TEMP_SENSOR_PIN);
+byte oneWireData[12];
+byte oneWireAddr[8];
 /// LCD
 #define LCD_LIGHT_MAX_TIM 10000
 static uint8_t backlighState = 0;
@@ -416,9 +419,7 @@ void menuAction()
             lcd.print("  ");
             lcd.print(temperature);
             lcd.print((char) 223);
-            lcd.print("C / ");
-            lcd.print(humidity);
-            lcd.print("%   ");
+            lcd.print("C         ");
             if (HEATING_STATE_ON == heatingState) {
                 lcd.print(menuBlinkTimDiff > MENU_BLINK_TIM ? "_" : " ");
 
@@ -733,11 +734,55 @@ void bluetoothReadAction()
  */
 inline void readSensors()
 {
-    if ((millis() - sensorReadTim) >= SENSOR_READ_INTERVAL) {
-        humidity = dht.readHumidity();
-        temperature = dht.readTemperature();
-        sensorReadTim = millis();
+    if ((millis() - sensorReadTim) < SENSOR_READ_INTERVAL) {
+        return;
     }
+
+    sensorReadTim = millis();
+
+    /// State 1
+    if (!ds.search(oneWireAddr)) {
+        Serial.println("err:onewire:no_more_addr");
+        ds.reset_search();
+        delay(250);
+        return;
+    }
+
+    if (OneWire::crc8(oneWireAddr, 7) != oneWireAddr[7]) {
+        Serial.println("err:onewire:crc");
+        return;
+    }
+
+    if (oneWireAddr[0] != 0x28) {
+        Serial.println("err:onewire:no_device");
+        return;
+    }
+
+    /// State 2
+    ds.reset();
+    ds.select(oneWireAddr);
+    ds.write(0x44, 1);
+    delay(1000);
+
+    ds.reset();
+    ds.select(oneWireAddr);
+    ds.write(0xBE);
+
+    uint8_t i;
+    for (i = 0; i < 9; i++) {
+        oneWireData[i] = ds.read();
+    }
+
+    int16_t raw = (oneWireData[1] << 8) | oneWireData[0];
+
+    byte cfg = (oneWireData[4] & 0x60);
+    // at lower res, the low bits are undefined, so let's zero them
+    if (cfg == 0x00) raw = raw & ~7;  // 9 bit resolution, 93.75 ms
+    else if (cfg == 0x20) raw = raw & ~3; // 10 bit res, 187.5 ms
+    else if (cfg == 0x40) raw = raw & ~1; // 11 bit res, 375 ms
+
+    temperature = (float) raw / 16.0;
+//    Serial.println(celsius);
 }
 
 /**
