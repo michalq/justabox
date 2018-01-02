@@ -416,9 +416,13 @@ void menuAction()
             lcd.print("  ");
             lcd.print(temperature);
             lcd.print((char) 223);
-            lcd.print("C         ");
+            lcd.print("C      ");
             if (HEATING_STATE_ON == heatingState) {
-                lcd.print(menuBlinkTimDiff > MENU_BLINK_TIM ? "_" : " ");
+                if (menuBlinkTimDiff > MENU_BLINK_TIM) {
+                    lcd.print((char) 176); // dec 176-178
+                } else {
+                    lcd.print(" ");
+                }
 
                 if (menuBlinkTimDiff > 2 * MENU_BLINK_TIM) {
                     menuBlinkTimStatus = millis();
