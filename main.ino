@@ -1,6 +1,5 @@
 #include <Wire.h>
 #include <LiquidCrystal_I2C.h>
-#include "DHT.h"
 #include "stdarg.h"
 #include <OneWire.h>
 
@@ -49,19 +48,18 @@ namespace {
     }
 }
 
-DHT dht(DHTPIN, DHTTYPE);
 LiquidCrystal_I2C lcd(0x27, 2, 1, 0, 4, 5, 6, 7, 3, POSITIVE);
 
 /// Sensors
 #define SENSOR_READ_INTERVAL 3000 // couldn't be less than 2s
-static uint8_t temperature;
+static float temperature;
 static uint32_t sensorReadTim = -9999;
-#define DHTPIN 9
-#define DHTTYPE DHT11
+
 #define TEMP_SENSOR_PIN 10
 OneWire ds(TEMP_SENSOR_PIN);
 byte oneWireData[12];
 byte oneWireAddr[8];
+uint8_t tempSensorSearch = 1;
 /// LCD
 #define LCD_LIGHT_MAX_TIM 10000
 static uint8_t backlighState = 0;
@@ -373,7 +371,6 @@ void setup()
     pinMode(PIN_BTN2, INPUT);
     pinMode(HEATING_WIRE_PIN, OUTPUT);
 
-    dht.begin();
     lcd.begin(16, 2);
     lcd.backlight();
 
@@ -732,7 +729,7 @@ void bluetoothReadAction()
 /**
  * Reads sensors.
  */
-inline void readSensors()
+void readSensors()
 {
     if ((millis() - sensorReadTim) < SENSOR_READ_INTERVAL) {
         return;
@@ -740,25 +737,29 @@ inline void readSensors()
 
     sensorReadTim = millis();
 
-    /// State 1
-    if (!ds.search(oneWireAddr)) {
-        Serial.println("err:onewire:no_more_addr");
-        ds.reset_search();
-        delay(250);
+    if (tempSensorSearch) {
+        if (!ds.search(oneWireAddr)) {
+            Serial.println("onewire:err:no_more_addr");
+            ds.reset_search();
+            delay(250);
+            return;
+        }
+
+        if (OneWire::crc8(oneWireAddr, 7) != oneWireAddr[7]) {
+            Serial.println("onewire:err:crc");
+            return;
+        }
+
+        if (oneWireAddr[0] != 0x28) {
+            Serial.println("onewire:err:no_device");
+            return;
+        }
+
+        tempSensorSearch = 0;
+
         return;
     }
 
-    if (OneWire::crc8(oneWireAddr, 7) != oneWireAddr[7]) {
-        Serial.println("err:onewire:crc");
-        return;
-    }
-
-    if (oneWireAddr[0] != 0x28) {
-        Serial.println("err:onewire:no_device");
-        return;
-    }
-
-    /// State 2
     ds.reset();
     ds.select(oneWireAddr);
     ds.write(0x44, 1);
@@ -782,7 +783,6 @@ inline void readSensors()
     else if (cfg == 0x40) raw = raw & ~1; // 11 bit res, 375 ms
 
     temperature = (float) raw / 16.0;
-//    Serial.println(celsius);
 }
 
 /**
