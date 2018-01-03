@@ -59,7 +59,8 @@ static uint32_t sensorReadTim = -9999;
 OneWire ds(TEMP_SENSOR_PIN);
 byte oneWireData[12];
 byte oneWireAddr[8];
-uint8_t tempSensorSearch = 1;
+uint8_t tempSensorState = 0;
+uint32_t tempSensorTim;
 /// LCD
 #define LCD_LIGHT_MAX_TIM 10000
 static uint8_t backlighState = 0;
@@ -91,7 +92,6 @@ static uint32_t index;
 #define MENU_STATE_PROGRAM              2
 #define MENU_STATE_SET_PROGRAM_ENTER    3
 #define MENU_STATE_SET_PROGRAM          4
-#define MENU_STATE_BLUETOOTH_CONNECTION 5
 #define MENU_STATE_SET_CLOCK            6
 
 static uint32_t menuBlinkTimStatus;
@@ -567,7 +567,7 @@ void menuAction()
             }
 
             /// Actions
-            if (btn1 && !pbtn1) lcdState = MENU_STATE_BLUETOOTH_CONNECTION;
+            if (btn1 && !pbtn1) lcdState = MENU_STATE_MAIN;
             if (btn2 && !pbtn2) {
                 lcdState = MENU_STATE_LIMITS;
                 // Refresh after checking for boundaries.
@@ -654,18 +654,6 @@ void menuAction()
 
             break;
 #endif
-        case MENU_STATE_BLUETOOTH_CONNECTION:
-            /// Actions
-            if (btn1 && !pbtn1) lcdState = MENU_STATE_MAIN;
-
-            lcd.setCursor(0, 0);
-            lcd.print("Reading         ");
-            lcd.setCursor(0, 1);
-            lcd.print("Bluetooth Input ");
-
-            bluetoothReadAction();
-
-            break;
     }
 }
 
@@ -741,52 +729,63 @@ void readSensors()
 
     sensorReadTim = millis();
 
-    if (tempSensorSearch) {
-        if (!ds.search(oneWireAddr)) {
-            Serial.println("onewire:err:no_more_addr");
-            ds.reset_search();
-            delay(250);
-            return;
-        }
+    switch (tempSensorState) {
+        case 0:
+            if (!ds.search(oneWireAddr)) {
+                Serial.println("onewire:err:no_more_addr");
+                ds.reset_search();
+                delay(250);
+                return;
+            }
 
-        if (OneWire::crc8(oneWireAddr, 7) != oneWireAddr[7]) {
-            Serial.println("onewire:err:crc");
-            return;
-        }
+            if (OneWire::crc8(oneWireAddr, 7) != oneWireAddr[7]) {
+                Serial.println("onewire:err:crc");
+                return;
+            }
 
-        if (oneWireAddr[0] != 0x28) {
-            Serial.println("onewire:err:no_device");
-            return;
-        }
+            if (oneWireAddr[0] != 0x28) {
+                Serial.println("onewire:err:no_device");
+                return;
+            }
 
-        tempSensorSearch = 0;
+            tempSensorState = 1;
 
-        return;
+            break;
+        case 1:
+            ds.reset();
+            ds.select(oneWireAddr);
+            ds.write(0x44, 1);
+
+            tempSensorState = 2;
+            tempSensorTim = millis();
+            break;
+        case 2:
+            if (millis() - tempSensorTim > 1000) {
+                tempSensorState = 3;
+            }
+            break;
+        case 3:
+            ds.reset();
+            ds.select(oneWireAddr);
+            ds.write(0xBE);
+
+            uint8_t i;
+            for (i = 0; i < 9; i++) {
+                oneWireData[i] = ds.read();
+            }
+
+            int16_t raw = (oneWireData[1] << 8) | oneWireData[0];
+
+            byte cfg = (oneWireData[4] & 0x60);
+            // at lower res, the low bits are undefined, so let's zero them
+            if (cfg == 0x00) raw = raw & ~7;  // 9 bit resolution, 93.75 ms
+            else if (cfg == 0x20) raw = raw & ~3; // 10 bit res, 187.5 ms
+            else if (cfg == 0x40) raw = raw & ~1; // 11 bit res, 375 ms
+
+            temperature = (float) raw / 16.0;
+            tempSensorState = 1;
+            break;
     }
-
-    ds.reset();
-    ds.select(oneWireAddr);
-    ds.write(0x44, 1);
-    delay(1000);
-
-    ds.reset();
-    ds.select(oneWireAddr);
-    ds.write(0xBE);
-
-    uint8_t i;
-    for (i = 0; i < 9; i++) {
-        oneWireData[i] = ds.read();
-    }
-
-    int16_t raw = (oneWireData[1] << 8) | oneWireData[0];
-
-    byte cfg = (oneWireData[4] & 0x60);
-    // at lower res, the low bits are undefined, so let's zero them
-    if (cfg == 0x00) raw = raw & ~7;  // 9 bit resolution, 93.75 ms
-    else if (cfg == 0x20) raw = raw & ~3; // 10 bit res, 187.5 ms
-    else if (cfg == 0x40) raw = raw & ~1; // 11 bit res, 375 ms
-
-    temperature = (float) raw / 16.0;
 }
 
 /**
@@ -846,6 +845,7 @@ void loop()
     menuAction();
     readSensors();
     refreshPeripheralsState();
+    bluetoothReadAction();
 
     pbtn1 = btn1;
     pbtn2 = btn2;
