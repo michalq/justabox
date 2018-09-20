@@ -3,50 +3,6 @@
 #include "stdarg.h"
 #include <OneWire.h>
 
-typedef struct fifo_t {
-    uint8_t* buf;
-    uint8_t head;
-    uint8_t tail;
-    uint8_t size;
-} fifo_t;
-namespace {
-    void fifo_init(fifo_t *f, uint8_t *buf, uint8_t size) {
-        f->head = 0;
-        f->tail = 0;
-        f->buf = buf;
-        f->size = size;
-    }
-
-    uint8_t fifo_push(fifo_t *f, uint8_t val) {
-        if (f->head + 1 == f->tail || (f->head + 1 == f->size && 0 == f->tail)) {
-            return 0;
-        }
-
-        f->buf[f->head] = val;
-        f->head++;
-        if (f->head == f->size) {
-            f->head = 0;
-        }
-
-        return 1;
-    }
-
-    uint8_t fifo_pop(fifo_t *f, uint8_t *val) {
-        if (f->tail == f->head) {
-            return 0;
-        }
-
-        uint8_t tmp = f->buf[f->tail];
-        f->tail++;
-        if (f->tail == f->size) {
-            f->tail = 0;
-        }
-
-        *val = tmp;
-
-        return 1;
-    }
-}
 
 LiquidCrystal_I2C lcd(0x27, 2, 1, 0, 4, 5, 6, 7, 3, POSITIVE);
 
@@ -61,57 +17,7 @@ byte oneWireData[12];
 byte oneWireAddr[8];
 uint8_t tempSensorState = 0;
 uint32_t tempSensorTim;
-/// LCD
-#define LCD_LIGHT_MAX_TIM 10000
-static uint8_t backlighState = 0;
-static uint8_t lcdState = 0;
-static uint8_t lcdLight = 0;
-static uint32_t lcdLightTim = LCD_LIGHT_MAX_TIM;
-/// Control
-#define PIN_BTN1 7
-#define PIN_BTN2 8
-static uint8_t btn1;
-static uint8_t pbtn1;
-static uint8_t btn2;
-static uint8_t pbtn2;
-/// Bluetooth
-static uint8_t zn;
-static uint32_t index;
-#define FUNC_LOAD_PROGRAM 1
 
-#define BT_COMMAND_LISTEN 255
-
-#define BT_STATE_MAIN         0
-#define BT_STATE_HEAT_PROGRAM 1
-/// Menu
-#define MENU_BLINK_TIM 500
-#define MENU_CHANGE_PROGRAM_TIM_THRESHOLD 2000
-
-#define MENU_STATE_MAIN                 0
-#define MENU_STATE_LIMITS               1
-#define MENU_STATE_PROGRAM              2
-#define MENU_STATE_SET_PROGRAM_ENTER    3
-#define MENU_STATE_SET_PROGRAM          4
-#define MENU_STATE_SET_CLOCK            6
-
-static uint32_t menuBlinkTimStatus;
-static uint32_t menuBlinkTimDiff;
-static uint32_t settingProgramCounter = 0;
-
-/// Clock
-#define CLOCK_PROGRESSIVE_THRESHOLD        1000
-#define CLOCK_PROGRESSIVE_THRESHOLD_SECOND 1000
-uint32_t clockTim = 0;
-uint8_t clockDay = 1;
-uint8_t clockHour = 0;
-uint8_t clockMin = 0;
-uint8_t clockSec = 0;
-uint8_t clockState = 0;
-uint32_t clockBlinkDiff;
-uint32_t clockBlinkTimStatus;
-uint32_t clockProgressiveTim;
-uint32_t clockProgressiveState = 0;
-uint32_t clockProgressiveTriggerTim;
 
 uint8_t btBuff[16];
 fifo_t btFifo;
