@@ -1,15 +1,88 @@
-
-/// Heating state
-#define HEATING_STATE_OFF 0
-#define HEATING_STATE_ON 1
-#define HEATING_WIRE_PIN 6
-uint8_t heatingState = HEATING_STATE_OFF;
 #if 0
 /// Heating program
 static uint8_t heatingProgram = 1;
 // Loaded programs.
 static Program* heatingPrograms[1];
 #endif
+
+/// Error codes of program reader.
+#define ERR_INVALID_PROGRAM 1
+#define ERR_INVALID_ID      2
+#define ERR_INVALID_NAME    3
+#define ERR_INVALID_DAY     4
+#define ERR_INVALID_HOUR    5
+#define ERR_INVALID_TEMP    6
+#define ERR_INVALID_CRC     7
+
+/// States of loading heating program.
+#define HEATING_PROGRAM_STATE_READ_ID      0
+#define HEATING_PROGRAM_STATE_READ_NAME    1
+#define HEATING_PROGRAM_STATE_READ_PROGRAM 2
+#define HEATING_PROGRAM_STATE_READ_CRC     3
+#define HEATING_PROGRAM_STATE_READ_END     4
+
+/// Heating program entity.
+typedef struct Program {
+    /// Assumptions: per day max 5 settings,
+    /// max size of one program will be 5 (max settings) * 7 (days) * 4 (bytes per line) = 140 (bytes)
+    uint8_t payload[140];
+    /// Lengths indicates bytes amount
+    uint8_t length = 0;
+    /// Max 8 chars per name
+    /// allowed chars a-zA-Z and space, in ascii 69-90, 97-122, 32
+    char name[16];
+    uint8_t nameLength = 0;
+    uint8_t id = 0;
+} Program;
+
+/// Validates user input.
+class ProgramValidator {
+public:
+    static uint8_t Name(uint8_t tmpChar, uint8_t length)
+    {
+        if (length > 16) {
+            return 0;
+        }
+
+        if ((tmpChar >= 65 && tmpChar <= 90) || (tmpChar >= 97 && tmpChar <= 122) || 32 == tmpChar) {
+            return 1;
+        }
+
+        return 0;
+    }
+    static uint8_t Day(uint8_t day)
+    {
+        if (day >= 0 && day <= 6) {
+            return 1;
+        }
+
+        return 0;
+    }
+    static uint8_t Hour(uint8_t hour)
+    {
+        if (hour >= 0 && hour <= 23) {
+            return 1;
+        }
+
+        return 0;
+    }
+    static uint8_t Temperature(uint8_t temperature)
+    {
+        if (temperature >= 0 && temperature <= 100) {
+            return 1;
+        }
+
+        return 0;
+    }
+    static uint8_t Id(uint8_t id)
+    {
+        if (id >= 0 && id <= 4) {
+            return 1;
+        }
+
+        return 0;
+    }
+};
 
 /// Manages programming heating programs.
 class ServiceProgram {
