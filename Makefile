@@ -1,7 +1,7 @@
 TARG = main
 CC = avr-gcc
 OBJCOPY = avr-objcopy
-SRCS = main.c i2cmaster.c
+SRCS = io.c main.c
 OBJS = $(SRCS:.c=.o)
 MCU = atmega328p
 

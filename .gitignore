@@ -1,5 +1,6 @@
-main.hex
-main.o
+*.hex
+*.o
+*.elf
 .idea
 .dep
 cmake-build-debug
