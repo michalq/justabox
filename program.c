@@ -1,5 +1,5 @@
 #if 0
-/// Heating program
+// Heating program
 static uint8_t heatingProgram = 1;
 // Loaded programs.
 static Program* heatingPrograms[1];
@@ -21,21 +21,25 @@ static Program* heatingPrograms[1];
 #define HEATING_PROGRAM_STATE_READ_CRC     3
 #define HEATING_PROGRAM_STATE_READ_END     4
 
-/// Heating program entity.
+/**
+ * Heating program entity.
+ */
 typedef struct Program {
-    /// Assumptions: per day max 5 settings,
-    /// max size of one program will be 5 (max settings) * 7 (days) * 4 (bytes per line) = 140 (bytes)
+    // Assumptions: per day max 5 settings,
+    // max size of one program will be 5 (max settings) * 7 (days) * 4 (bytes per line) = 140 (bytes)
     uint8_t payload[140];
-    /// Lengths indicates bytes amount
+    // Lengths indicates bytes amount
     uint8_t length = 0;
-    /// Max 8 chars per name
-    /// allowed chars a-zA-Z and space, in ascii 69-90, 97-122, 32
+    // Max 8 chars per name
+    // allowed chars a-zA-Z and space, in ascii 69-90, 97-122, 32
     char name[16];
     uint8_t nameLength = 0;
     uint8_t id = 0;
 } Program;
 
-/// Validates user input.
+/**
+ * Validates user input.
+ */
 class ProgramValidator {
 public:
     static uint8_t Name(uint8_t tmpChar, uint8_t length)
@@ -50,6 +54,7 @@ public:
 
         return 0;
     }
+
     static uint8_t Day(uint8_t day)
     {
         if (day >= 0 && day <= 6) {
@@ -58,6 +63,7 @@ public:
 
         return 0;
     }
+
     static uint8_t Hour(uint8_t hour)
     {
         if (hour >= 0 && hour <= 23) {
@@ -66,6 +72,7 @@ public:
 
         return 0;
     }
+
     static uint8_t Temperature(uint8_t temperature)
     {
         if (temperature >= 0 && temperature <= 100) {
@@ -74,6 +81,7 @@ public:
 
         return 0;
     }
+
     static uint8_t Id(uint8_t id)
     {
         if (id >= 0 && id <= 4) {
@@ -89,33 +97,36 @@ class ServiceProgram {
     uint8_t error;
     Program** programsContainer;
 public:
-    /// Currently programmed program.
+    /** Currently programmed program. */
     Program* program;
-    /// State of writer.
+    /** State of writer. */
     uint8_t state;
-    /// Constructor.
+
     ServiceProgram()
     {
         this->program = new Program;
         this->reset();
     }
-
     uint8_t checkTemperature(uint8_t currDay, uint8_t currHour, uint8_t currMin)
     {
         if (0 == this->program->length) {
             return NULL;
         }
-
         uint8_t day, hourFrom, hourTo, temp = NULL, iter;
-
         iter = this->program->length;
         for (uint8_t i = 0; i < iter; i += 4) {
             day = this->program->payload[i];
-            if (day != currDay) continue;
+            if (day != currDay) {
+                continue;
+            }
             hourFrom = this->program->payload[i + 1];
-            if (currHour < hourFrom) continue;
+            if (currHour < hourFrom) {
+                continue;
+            }
             hourTo = this->program->payload[i + 2];
-            if (currHour > hourTo) continue;
+            if (currHour > hourTo) {
+                continue;
+            }
             temp = this->program->payload[i + 3];
             break;
         }
@@ -128,7 +139,9 @@ public:
         return 1;
     }
 
-    /// Resets to initial state.
+    /**
+     * Resets to initial state.
+     */
     void reset()
     {
         this->error = NULL;
@@ -152,7 +165,9 @@ public:
 
         return 1;
     }
-    /// Reads another byte of data.
+    /**
+     * Reads another byte of data.
+     */
     uint8_t read(uint8_t payload)
     {
         if (NULL == this->program && this->state != HEATING_PROGRAM_STATE_READ_ID) {

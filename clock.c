@@ -1,4 +1,6 @@
-/// Clock structure.
+/**
+ * Clock structure.
+ */
 typedef struct Clock {
     uint32_t tim = 0;
 
@@ -17,7 +19,9 @@ typedef struct Clock {
     uint32_t progressiveTriggerTim;
 } Clock;
 
-/// Manages clock calculations.
+/**
+ * Manages clock calculations.
+ */
 inline void clock()
 {
     if (millis() - clockTim > 1000) {

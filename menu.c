@@ -53,7 +53,7 @@ void menuAction()
                 lcd.print(" ");
             }
 
-            /// Actions
+            // Actions
             if (btn1 && !pbtn1) lcdState = MENU_STATE_PROGRAM;
             if (btn2 && !pbtn2) lcdState = MENU_STATE_SET_CLOCK;
 
@@ -188,7 +188,7 @@ void menuAction()
                 lcd.print("                ");
             }
 
-            /// Actions
+            // Actions
             if (btn1 && !pbtn1) lcdState = MENU_STATE_MAIN;
             if (btn2 && !pbtn2) {
                 lcdState = MENU_STATE_LIMITS;
