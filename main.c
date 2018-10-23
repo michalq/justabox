@@ -1,7 +1,6 @@
 #define F_CPU 1000000UL
-#define true 1
-#define false 0
 
+#include "utils.h"
 #include <stdint.h>
 #include "io.c"
 
@@ -73,8 +72,6 @@
 // {
 //     Serial.begin(9600);
 
-//     pinMode(PIN_BTN1, INPUT);
-//     pinMode(PIN_BTN2, INPUT);
 //     pinMode(HEATING_WIRE_PIN, OUTPUT);
 
 //     lcd.begin(16, 2);
@@ -83,29 +80,49 @@
 //     fifo_init(&btFifo, btBuff, 16);
 // }
 
-static uint8_t btn1;
-static uint8_t pbtn1;
-static uint8_t btn2;
-static uint8_t pbtn2;
+static bool btnPrimary;
+static bool pBtnPrimary;
+static bool btnSecondary;
+static bool pBtnSecondary;
+
+inline static void beforeLoop() __attribute__((always_inline));
+inline static void loop() __attribute__((always_inline));
+inline static void afterLoop() __attribute__((always_inline));
 
 int main()
 {
     IO_Setup();
-
     while (true) {
-        // clock();
-        //
+        beforeLoop();
+        loop();
+        afterLoop();
+    }
+}
+
+inline static void beforeLoop()
+{
+    btnPrimary = IO_GetInputPrimary();
+    btnSecondary = IO_GetInputSecondary();
+}
+
+inline static void loop()
+{
+    if (btnPrimary) {
+        IO_SetOutputPrimary(true);
     }
 
-    btn1 = IO_Read_1();
-    btn2 = IO_Read_2();
-
+    if (btnSecondary) {
+        IO_SetOutputPrimary(false);
+    }
+    // clock();
     // menuAction();
     // readSensors();
     // refreshPeripheralsState();
     // bluetoothReadAction();
-
-    pbtn1 = btn1;
-    pbtn2 = btn2;
 }
 
+inline static void afterLoop()
+{
+    pBtnPrimary = btnPrimary;
+    pBtnSecondary = btnSecondary;
+}
