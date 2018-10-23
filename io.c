@@ -16,12 +16,12 @@ inline void IO_Setup()
 
 inline bool IO_GetInputPrimary()
 {
-    return PINB & (1 << PD0);
+    return PIND & (1 << PD7);
 }
 
 inline bool IO_GetInputSecondary()
 {
-    return PIND & (1 << PD7);
+    return PINB & (1 << PD0);
 }
 
 inline void IO_SetOutputPrimary(bool status)
