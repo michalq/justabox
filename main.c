@@ -3,7 +3,7 @@
 #include <stdint.h>
 #include "utils.h"
 #include "libs/i2c_master.h"
-#include "libs/lcd.h"
+#include "libs/lcd.c"
 #include "io.c"
 
 inline static void beforeLoop() __attribute__((always_inline));
@@ -33,23 +33,19 @@ inline static void beforeLoop()
     btnSecondary = IO_GetInputSecondary();
 
     i2c_init();
-
+    lcd_init();
 }
 
 inline static void loop()
 {
-    uint8_t data[1];
     if (btnPrimary) {
         IO_SetOutputPrimary(true);
-        data[0] = LCD_NOBACKLIGHT;
-        i2c_transmit(0x27, data, 1);
     }
 
     if (btnSecondary) {
         IO_SetOutputPrimary(false);
-        data[0] = LCD_BACKLIGHT;
-        i2c_transmit(0x27, data, 1);
     }
+
     // clock();
     // menuAction();
     // readSensors();

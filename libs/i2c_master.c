@@ -78,7 +78,7 @@ uint8_t i2c_read_nack(void)
     return TWDR;
 }
 
-uint8_t i2c_transmit(uint8_t address, uint8_t* data, uint16_t length)
+uint8_t i2c(uint8_t address, uint8_t* data, uint16_t length)
 {
     if (i2c_start(address | I2C_WRITE)) return 1;
 
