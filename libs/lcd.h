@@ -40,12 +40,12 @@
 #define LCD_BACKLIGHT 0x08
 #define LCD_NOBACKLIGHT 0x00
 
-#define En 0x00000100  // Enable bit
-#define Rw 0x00000010  // Read/Write bit
-#define Rs 0x00000001 // Register select bit
+#define En 0b00000100  // Enable bit
+#define Rw 0b00000010  // Read/Write bit
+#define Rs 0b00000001 // Register select bit
 
 void lcd_init();
-inline void command(uint8_t value);
+void command(uint8_t value);
 void send(uint8_t value, uint8_t mode);
 void write4bits(uint8_t value);
 void expanderWrite(uint8_t _data);

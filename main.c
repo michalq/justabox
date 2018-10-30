@@ -1,10 +1,11 @@
 #define F_CPU 1000000UL
 
-#include <stdint.h>
-#include "utils.h"
-#include "libs/i2c_master.h"
-#include "libs/lcd.c"
 #include "io.c"
+#include <stdint.h>
+#include <avr/interrupt.h>
+#include "utils.h"
+#include "libs/twi.h"
+#include "libs/lcd.h"
 
 inline static void beforeLoop() __attribute__((always_inline));
 inline static void loop() __attribute__((always_inline));
@@ -18,6 +19,9 @@ static bool pBtnSecondary;
 int main(void)
 {
     IO_Setup();
+    lcd_init();
+    sei();
+
     while (true) {
         beforeLoop();
         loop();
@@ -31,9 +35,6 @@ inline static void beforeLoop()
 {
     btnPrimary = IO_GetInputPrimary();
     btnSecondary = IO_GetInputSecondary();
-
-    i2c_init();
-    lcd_init();
 }
 
 inline static void loop()
