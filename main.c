@@ -4,7 +4,7 @@
 #include <stdint.h>
 #include <avr/interrupt.h>
 #include "utils.h"
-#include "libs/twi.h"
+#include "libs/i2c_master.h"
 #include "libs/lcd.h"
 
 inline static void beforeLoop() __attribute__((always_inline));
@@ -19,9 +19,15 @@ static bool pBtnSecondary;
 int main(void)
 {
     IO_Setup();
-    lcd_init();
-    sei();
+    i2c_init();
 
+    IO_SetOutputPrimary(false);
+    i2c_start_wait(0x27 + I2C_WRITE);
+    IO_SetOutputPrimary(true);
+    i2c_write(1);
+    // i2c_stop();
+
+    // lcd_init();
     while (true) {
         beforeLoop();
         loop();

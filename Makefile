@@ -1,7 +1,7 @@
 TARG = main
 CC = avr-gcc
 OBJCOPY = avr-objcopy
-SRCS = libs/twi.c libs/lcd.c io.c main.c
+SRCS = libs/i2c_master.c libs/lcd.c io.c main.c
 OBJS = $(SRCS:.c=.o)
 MCU = atmega328p
 
@@ -22,4 +22,4 @@ clean:
 	rm -f $(SRCS:.c=.elf) $(OBJS)
 
 load:
-	avrdude -c usbasp -p $(MCU) -U flash:w:$(TARG).hex
+	avrdude -F -c usbasp -p $(MCU) -U flash:w:$(TARG).hex
